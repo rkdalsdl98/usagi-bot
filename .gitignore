@@ -1,0 +1,13 @@
+# 비밀 값 (.env.example 은 커밋)
+.env
+
+# 로컬 스크립트가 S3 대신 쓰는 폴더
+.local-s3/
+
+# 빌드·테스트 산출물
+.aws-sam/
+__pycache__/
+.pytest_cache/
+
+# macOS
+.DS_Store

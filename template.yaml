@@ -1,0 +1,178 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: 강남역 랜덤 점심 추천 디스코드 봇
+
+Parameters:
+  KakaoRestApiKey:
+    Type: String
+    NoEcho: true
+    Description: 카카오 디벨로퍼스 REST API 키
+  DiscordBotToken:
+    Type: String
+    NoEcho: true
+    Description: 디스코드 봇 토큰 (개발자 포털 Bot 탭). 봇 계정이 이 토큰으로 채널에 메시지를 보냄
+  DiscordChannelId:
+    Type: String
+    AllowedPattern: "[0-9]+"
+    Description: 추천을 보낼 디스코드 채널 ID (채널 우클릭 > 채널 ID 복사)
+  DiscordPublicKey:
+    Type: String
+    Description: 디스코드 앱의 Public Key (General Information 탭)
+  VoterCount:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    Description: 투표 정원. 0 이면 채널을 볼 수 있는 사람 수(봇 제외)로 자동 (개발자 포털 SERVER MEMBERS INTENT 필요)
+  ScheduleCron:
+    Type: String
+    Default: cron(30 11 * * ? *)
+    Description: 실행 시각 (Asia/Seoul 기준). 평일만이면 cron(30 11 ? * MON-FRI *)
+  AlertEmail:
+    Type: String
+    Description: Lambda 오류 알림을 받을 이메일 (배포 후 온 확인 메일의 링크를 눌러야 알림이 옴)
+  DinnerChannelId:
+    Type: String
+    AllowedPattern: "[0-9]+"
+    Description: 저녁 추천(오저뭐)을 보낼 디스코드 채널 ID
+  DinnerVoterCount:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    Description: 저녁 투표 정원. 0 이면 저녁 채널을 볼 수 있는 사람 수(봇 제외)로 자동
+  DinnerScheduleCron:
+    Type: String
+    Default: cron(0 18 ? * MON-FRI *)
+    Description: 저녁 추천 시각 (Asia/Seoul 기준). 기본은 평일 18시
+  HachiwareWebhookUrls:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: 하치와레 웹훅 주소들 (쉼표로 구분, 채널마다 하나). 번역이 켜져 있으면 추천·투표 결과 번역과 우사기 명령 안내를 그 채널의 하치와레가 함
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures: [arm64]
+    CodeUri: src/
+    MemorySize: 256
+    Environment:
+      Variables:
+        BUCKET_NAME: !Ref LunchBucket
+
+Resources:
+  LunchBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  RecommendFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: recommend.handler
+      Timeout: 300
+      Environment:
+        Variables:
+          KAKAO_REST_API_KEY: !Ref KakaoRestApiKey
+          DISCORD_BOT_TOKEN: !Ref DiscordBotToken
+          DISCORD_CHANNEL_ID: !Ref DiscordChannelId
+          VOTER_COUNT: !Ref VoterCount
+          DINNER_CHANNEL_ID: !Ref DinnerChannelId
+          DINNER_VOTER_COUNT: !Ref DinnerVoterCount
+          HACHIWARE_WEBHOOK_URLS: !Ref HachiwareWebhookUrls  # 번역이 켜져 있으면 추천 메시지의 우사기 소리를 그 채널 하치와레가 번역
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref LunchBucket
+      Events:
+        DailyLunch:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: !Ref ScheduleCron
+            ScheduleExpressionTimezone: Asia/Seoul
+            RetryPolicy:
+              MaximumRetryAttempts: 1
+        WeekdayDinner:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: !Ref DinnerScheduleCron
+            ScheduleExpressionTimezone: Asia/Seoul
+            Input: '{"meal": "dinner"}'
+            RetryPolicy:
+              MaximumRetryAttempts: 1
+
+  InteractionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: interaction.handler
+      Timeout: 10
+      Environment:
+        Variables:
+          DISCORD_PUBLIC_KEY: !Ref DiscordPublicKey
+          DISCORD_BOT_TOKEN: !Ref DiscordBotToken  # 우사기 명령: 서버 주인 확인, /추방
+          DISCORD_CHANNEL_ID: !Ref DiscordChannelId
+          DINNER_CHANNEL_ID: !Ref DinnerChannelId
+          HACHIWARE_WEBHOOK_URLS: !Ref HachiwareWebhookUrls
+          RECOMMEND_FUNCTION_NAME: !Ref RecommendFunction  # /점심 추천 · /저녁 추천은 추천 Lambda 를 따로 부름
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref LunchBucket
+        - LambdaInvokePolicy:
+            FunctionName: !Ref RecommendFunction
+      FunctionUrlConfig:
+        AuthType: NONE
+
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlertEmail
+
+  # 5분 안에 오류(예외, 타임아웃)가 한 번이라도 나면 메일을 보냅니다.
+  RecommendErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: 점심 추천 Lambda 실행 실패 (오늘 추천 메시지가 안 갔을 수 있음)
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref RecommendFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  InteractionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: 버튼 클릭 처리 Lambda 실행 실패 (사용자에게 '상호작용 실패'가 보였음)
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref InteractionFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+Outputs:
+  InteractionsEndpointUrl:
+    Description: 디스코드 개발자 포털의 Interactions Endpoint URL 에 넣을 주소
+    Value: !GetAtt InteractionFunctionUrl.FunctionUrl
+  BucketName:
+    Value: !Ref LunchBucket
+  RecommendFunctionName:
+    Value: !Ref RecommendFunction

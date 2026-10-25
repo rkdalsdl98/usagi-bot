@@ -1,0 +1,50 @@
+# 로컬에서 항상 켜 두는 서버들. `docker compose up -d` 로 함께 띄웁니다.
+#
+#   interaction  디스코드 버튼 클릭(투표)과 우사기 명령(/도움, /멤버 …) 처리 서버 (scripts/serve_local.py)
+#   tunnel       interaction 을 인터넷 주소로 이어 주는 cloudflared 임시 터널
+#                주소는 `docker compose logs tunnel` 에 나오고, 띄울 때마다 바뀝니다 (개발자 포털에 다시 등록)
+#   usagi        우사기 채널에 채팅이 오면 우사기 소리로 답하는 봇 (scripts/usagi_bot.py)
+#   recommend    추천 메시지를 한 번 보내는 명령 (서버 아님): docker compose run --rm recommend [--dinner]
+#
+# 비밀 값은 .env 에서 읽고, 투표·추천 기록은 호스트의 .local-s3/ 를 함께 씁니다.
+
+x-app: &app
+  build: .
+  image: lunchbot:local
+  env_file: .env
+
+services:
+  interaction:
+    <<: *app
+    command: ["python", "scripts/serve_local.py", "8787"]
+    environment:
+      SERVE_HOST: 0.0.0.0
+      LOCAL_S3_DIR: /data
+    volumes:
+      - ./.local-s3:/data
+    restart: unless-stopped
+
+  tunnel:
+    image: cloudflare/cloudflared:2026.9.1
+    command: ["tunnel", "--no-autoupdate", "--url", "http://interaction:8787"]
+    depends_on:
+      - interaction
+    restart: unless-stopped
+
+  usagi:
+    <<: *app
+    command: ["python", "scripts/usagi_bot.py"]
+    environment:
+      LOCAL_S3_DIR: /data  # 하치와레 번역 켜짐/꺼짐을 버튼 서버와 같은 곳에서 읽음
+    volumes:
+      - ./.local-s3:/data
+    restart: unless-stopped
+
+  recommend:
+    <<: *app
+    profiles: ["manual"]
+    entrypoint: ["python", "scripts/run_local.py"]
+    environment:
+      LOCAL_S3_DIR: /data
+    volumes:
+      - ./.local-s3:/data

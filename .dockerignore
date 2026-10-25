@@ -1,0 +1,8 @@
+# 비밀 값과 로컬 데이터는 이미지에 넣지 않습니다 (.env 는 실행할 때 넘기고, .local-s3 는 볼륨으로 붙임)
+.env
+.local-s3
+.aws-sam
+.git
+tests
+**/__pycache__
+.pytest_cache
