@@ -23,13 +23,13 @@ def test_rank_names_in_order():
 def test_who_can_use_which_command():
     everyone = ["도움", "우사기", "점심 추천", "저녁 추천", "하치와레 번역 켜기", "하치와레 번역 끄기"]
     assert members.allowed(0) == everyone
-    assert members.allowed(WALKER) == everyone + ["멤버 추가"]
+    assert members.allowed(WALKER) == everyone + ["멤버추가"]
     assert members.allowed(WORKER) == members.allowed(CAPTAIN) == everyone + [
-        "멤버 추가", "멤버 승급", "멤버 강등", "멤버 삭제", "추방", "하치와레 전체 켜기", "하치와레 전체 끄기"]
-    assert members.check("하치와레 전체 켜기", WALK) == "rank_low"  # 서버 전체 번역은 직장인 갑옷씨부터
+        "멤버추가", "멤버승급", "멤버강등", "멤버삭제", "추방", "전체번역 켜기", "전체번역 끄기"]
+    assert members.check("전체번역 켜기", WALK) == "rank_low"  # 서버 전체 번역은 직장인 갑옷씨부터
     for command in everyone:
         assert members.check(command, NOBODY) is None
-    assert members.check("멤버 추가", NOBODY, Person("y")) == "rank_low"
+    assert members.check("멤버추가", NOBODY, Person("y")) == "rank_low"
     assert members.check("추방", WALK, NOBODY) == "rank_low"
 
 
@@ -39,40 +39,40 @@ def test_server_owner_outranks_other_captains():
 
 
 def test_add_member():
-    assert members.check("멤버 추가", WALK, NOBODY) is None
-    assert members.check("멤버 추가", WALK, WORK) == "already"
-    assert members.check("멤버 추가", WORK, OWNER) == "already"  # 주인은 이미 대장
-    assert members.check("멤버 추가", WALK, BOT) == "bot"
-    assert members.check("멤버 추가", WALK, WALK) == "self"
+    assert members.check("멤버추가", WALK, NOBODY) is None
+    assert members.check("멤버추가", WALK, WORK) == "already"
+    assert members.check("멤버추가", WORK, OWNER) == "already"  # 주인은 이미 대장
+    assert members.check("멤버추가", WALK, BOT) == "bot"
+    assert members.check("멤버추가", WALK, WALK) == "self"
 
 
 def test_promote_up_to_own_rank():
-    assert members.check("멤버 승급", WORK, WALK, WORKER) is None  # 직장인은 행인을 직장인까지
-    assert members.check("멤버 승급", WORK, WALK, CAPTAIN) == "rank_too_high"
-    assert members.check("멤버 승급", WORK, WORK2, WORKER) == "not_lower"
-    assert members.check("멤버 승급", CAP, WORK, CAPTAIN) is None  # 대장은 대장까지
-    assert members.check("멤버 승급", CAP, WALK, WALKER) == "not_up"
-    assert members.check("멤버 승급", CAP, NOBODY, WALKER) == "not_member"
-    assert members.check("멤버 승급", CAP, OWNER, CAPTAIN) == "not_lower"
-    assert members.check("멤버 승급", WALK, NOBODY, WALKER) == "rank_low"
-    assert members.check("멤버 승급", CAP, WALK, 9) == "bad_rank"
+    assert members.check("멤버승급", WORK, WALK, WORKER) is None  # 직장인은 행인을 직장인까지
+    assert members.check("멤버승급", WORK, WALK, CAPTAIN) == "rank_too_high"
+    assert members.check("멤버승급", WORK, WORK2, WORKER) == "not_lower"
+    assert members.check("멤버승급", CAP, WORK, CAPTAIN) is None  # 대장은 대장까지
+    assert members.check("멤버승급", CAP, WALK, WALKER) == "not_up"
+    assert members.check("멤버승급", CAP, NOBODY, WALKER) == "not_member"
+    assert members.check("멤버승급", CAP, OWNER, CAPTAIN) == "not_lower"
+    assert members.check("멤버승급", WALK, NOBODY, WALKER) == "rank_low"
+    assert members.check("멤버승급", CAP, WALK, 9) == "bad_rank"
 
 
 def test_demote_only_lower_members():
-    assert members.check("멤버 강등", CAP, WORK, WALKER) is None
-    assert members.check("멤버 강등", WORK, WALK, WALKER) == "not_down"  # 행인 아래 등급은 없음
-    assert members.check("멤버 강등", CAP, CAP2, WORKER) == "not_lower"
-    assert members.check("멤버 강등", OWNER, CAP, WORKER) is None  # 주인은 다른 대장도 내릴 수 있음
-    assert members.check("멤버 강등", CAP, OWNER, WORKER) == "owner"
-    assert members.check("멤버 강등", CAP, WORK, CAPTAIN) == "not_down"
+    assert members.check("멤버강등", CAP, WORK, WALKER) is None
+    assert members.check("멤버강등", WORK, WALK, WALKER) == "not_down"  # 행인 아래 등급은 없음
+    assert members.check("멤버강등", CAP, CAP2, WORKER) == "not_lower"
+    assert members.check("멤버강등", OWNER, CAP, WORKER) is None  # 주인은 다른 대장도 내릴 수 있음
+    assert members.check("멤버강등", CAP, OWNER, WORKER) == "owner"
+    assert members.check("멤버강등", CAP, WORK, CAPTAIN) == "not_down"
 
 
 def test_remove_member():
-    assert members.check("멤버 삭제", WORK, WALK) is None
-    assert members.check("멤버 삭제", WORK, WORK2) == "not_lower"
-    assert members.check("멤버 삭제", WORK, NOBODY) == "not_member"
-    assert members.check("멤버 삭제", CAP, OWNER) == "owner"
-    assert members.check("멤버 삭제", WORK, WORK) == "self"
+    assert members.check("멤버삭제", WORK, WALK) is None
+    assert members.check("멤버삭제", WORK, WORK2) == "not_lower"
+    assert members.check("멤버삭제", WORK, NOBODY) == "not_member"
+    assert members.check("멤버삭제", CAP, OWNER) == "owner"
+    assert members.check("멤버삭제", WORK, WORK) == "self"
 
 
 def test_kick():

@@ -145,3 +145,24 @@ def test_get_channel(monkeypatch):
 
     monkeypatch.setattr(discord.urllib.request, "urlopen", gone)
     assert discord.get_channel("tok", "t1") is None  # 지워진 스레드
+
+
+def test_role_helpers(monkeypatch):
+    seen = capture(monkeypatch, [{"id": "r1", "name": "행인 갑옷씨"}])
+    assert discord.guild_roles("tok", "g1") == [{"id": "r1", "name": "행인 갑옷씨"}]
+    assert seen[0]["url"].endswith("/guilds/g1/roles") and seen[0]["method"] == "GET"
+    discord.create_role("tok", "g1", "행인 갑옷씨", 0x95A5A6)
+    assert seen[1]["method"] == "POST" and seen[1]["url"].endswith("/guilds/g1/roles")
+    assert seen[1]["body"] == {"name": "행인 갑옷씨", "color": 0x95A5A6, "hoist": False, "mentionable": False, "permissions": "0"}
+    discord.add_role("tok", "g1", "u9", "r1", "우사기 명령 /멤버승급")
+    assert seen[2]["method"] == "PUT" and seen[2]["url"].endswith("/guilds/g1/members/u9/roles/r1")
+    discord.remove_role("tok", "g1", "u9", "r1", "우사기 명령 /멤버삭제")
+    assert seen[3]["method"] == "DELETE" and seen[3]["url"].endswith("/guilds/g1/members/u9/roles/r1")
+    assert urllib.parse.unquote(seen[3]["headers"]["x-audit-log-reason"]) == "우사기 명령 /멤버삭제"
+
+
+def test_set_role_positions(monkeypatch):
+    seen = capture(monkeypatch, [])
+    discord.set_role_positions("tok", "g1", {"r3": 4, "r1": 2})
+    assert seen[0]["method"] == "PATCH" and seen[0]["url"].endswith("/guilds/g1/roles")
+    assert seen[0]["body"] == [{"id": "r3", "position": 4}, {"id": "r1", "position": 2}]

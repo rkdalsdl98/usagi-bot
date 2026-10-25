@@ -239,9 +239,12 @@ def put_guild_commands(bot_token: str, app_id: str, guild_id: str, commands: lis
         return json.load(res)
 
 
-def _api_send(bot_token: str, method: str, path: str, payload=None) -> dict:
+def _api_send(bot_token: str, method: str, path: str, payload=None, reason: str | None = None) -> dict:
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8") if payload is not None else None
-    req = urllib.request.Request(f"{config.DISCORD_API_BASE}{path}", data=data, headers=_headers(bot_token), method=method)
+    headers = _headers(bot_token)
+    if reason:
+        headers["X-Audit-Log-Reason"] = urllib.parse.quote(reason)  # 서버 감사 로그에 남는 까닭
+    req = urllib.request.Request(f"{config.DISCORD_API_BASE}{path}", data=data, headers=headers, method=method)
     with urllib.request.urlopen(req, timeout=10) as res:
         body = res.read()
     return json.loads(body) if body else {}
@@ -259,6 +262,32 @@ def add_thread_member(bot_token: str, thread_id: str, user_id: str) -> None:
 
 def unarchive_thread(bot_token: str, thread_id: str) -> None:
     _api_send(bot_token, "PATCH", f"/channels/{thread_id}", {"archived": False})
+
+
+def guild_roles(bot_token: str, guild_id: str) -> list:
+    return _api_get(bot_token, f"/guilds/{guild_id}/roles")
+
+
+def create_role(bot_token: str, guild_id: str, name: str, color: int) -> dict:
+    """권한 없는 역할을 만듭니다 (멤버 목록에서 따로 묶지 않고, 멘션도 못 함). 봇에 '역할 관리' 권한이 필요합니다."""
+    payload = {"name": name, "color": color, "hoist": False, "mentionable": False, "permissions": "0"}
+    return _api_send(bot_token, "POST", f"/guilds/{guild_id}/roles", payload, reason="우사기 갑옷씨 등급 역할")
+
+
+def set_role_positions(bot_token: str, guild_id: str, positions: dict) -> None:
+    """역할 순서 바꾸기 ({역할 id: 위치}, 클수록 위). 봇 역할보다 아래 자리끼리만 바꿀 수 있습니다."""
+    payload = [{"id": rid, "position": pos} for rid, pos in positions.items()]
+    _api_send(bot_token, "PATCH", f"/guilds/{guild_id}/roles", payload, reason="우사기 갑옷씨 등급 순서")
+
+
+def add_role(bot_token: str, guild_id: str, user_id: str, role_id: str, reason: str) -> None:
+    """역할 주기. 봇 역할이 그 역할보다 위에 있어야 합니다."""
+    _api_send(bot_token, "PUT", f"/guilds/{guild_id}/members/{user_id}/roles/{role_id}", reason=reason)
+
+
+def remove_role(bot_token: str, guild_id: str, user_id: str, role_id: str, reason: str) -> None:
+    """역할 떼기 (그 역할이 없어도 됨)."""
+    _api_send(bot_token, "DELETE", f"/guilds/{guild_id}/members/{user_id}/roles/{role_id}", reason=reason)
 
 
 def get_channel(bot_token: str, channel_id: str):

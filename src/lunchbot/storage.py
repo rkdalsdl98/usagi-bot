@@ -7,10 +7,11 @@
   votes/{메시지 id}/meta.json            그 메시지의 투표 정보 (날짜, 5곳, 정원, 우사기 소리, 지난번 선택)
   votes/{메시지 id}/ballots/{사용자 id}.json  사람마다 한 표 (다시 누르면 덮어씀)
   votes/{메시지 id}/result.json          마감 결과 (처음 한 번만 써짐)
-  members/{서버 id}.json                 갑옷씨 멤버와 등급 (우사기 명령 /멤버 …)
-  settings/hachiware.json               하치와레 번역 서버 전체 (/하치와레 전체 켜기·끄기, 없으면 꺼짐)
+  members/{서버 id}.json                 갑옷씨 멤버와 등급 (우사기 명령 /멤버추가 등)
+  settings/hachiware.json               하치와레 번역 서버 전체 (/전체번역 켜기·끄기, 없으면 꺼짐)
   settings/hachiware_people.json        하치와레 번역 개인 설정 (/하치와레 번역 켜기·끄기)
   threads/{서버 id}.json                 /우사기 로 만든 1:1 비공개 스레드 (사람마다 스레드 id)
+  roles/{서버 id}.json                   갑옷씨 등급마다 디스코드 역할 id
 
 저녁(오저뭐)의 latest, selections, recommendations 는 앞에 dinner/ 를 붙여 점심과 따로 둡니다.
 식당 목록 캐시와 votes/ 는 함께 씁니다 (투표는 메시지마다 따로이고, 어느 끼니인지는 meta.json 에 있음).
@@ -76,6 +77,10 @@ def members_key(guild_id: str) -> str:
 
 HACHIWARE_KEY = "settings/hachiware.json"  # 하치와레 번역 서버 전체 (메뉴 추천·투표 결과, 정하지 않은 사람의 기본)
 HACHIWARE_PEOPLE_KEY = "settings/hachiware_people.json"  # 하치와레 번역 개인 설정 {사용자 id: {"translate": …}}
+
+
+def roles_key(guild_id: str) -> str:
+    return f"roles/{guild_id}.json"  # 갑옷씨 등급 역할의 디스코드 역할 id
 
 
 def threads_key(guild_id: str) -> str:

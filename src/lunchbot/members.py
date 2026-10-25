@@ -1,6 +1,6 @@
 """갑옷씨 멤버와 등급: 행인 갑옷씨 → 직장인 갑옷씨 → 대장 갑옷씨.
 
-우사기 명령(/멤버 …, /추방)으로 서버 사람을 멤버로 등록하고 등급을 정합니다. 멤버가 아닌 사람은 등급 0 입니다.
+우사기 명령(/멤버추가 · /멤버승급 · /멤버강등 · /멤버삭제, /추방)으로 서버 사람을 멤버로 등록하고 등급을 정합니다. 멤버가 아닌 사람은 등급 0 입니다.
 자기 등급과 그 아래 등급의 명령을 쓸 수 있습니다 (NEEDS).
 
   승급        자기보다 낮은 멤버를, 지금보다 높고 자기 등급 이하인 등급으로 (대장은 대장까지)
@@ -25,15 +25,15 @@ NEEDS = {
     "저녁 추천": 0,
     "하치와레 번역 켜기": 0,
     "하치와레 번역 끄기": 0,
-    "멤버 추가": WALKER,
-    "멤버 승급": WORKER,  # 행인은 자기보다 낮은 멤버가 없어 아무도 올릴 수 없음
-    "멤버 강등": WORKER,
-    "멤버 삭제": WORKER,
+    "멤버추가": WALKER,
+    "멤버승급": WORKER,  # 행인은 자기보다 낮은 멤버가 없어 아무도 올릴 수 없음
+    "멤버강등": WORKER,
+    "멤버삭제": WORKER,
     "추방": WORKER,
-    "하치와레 전체 켜기": WORKER,  # 메뉴 추천·투표 결과 번역 (서버 전체)
-    "하치와레 전체 끄기": WORKER,
+    "전체번역 켜기": WORKER,  # 메뉴 추천·투표 결과 번역 (서버 전체)
+    "전체번역 끄기": WORKER,
 }
-_TARGETS_MEMBER = {"멤버 승급", "멤버 강등", "멤버 삭제"}  # 대상이 멤버여야 하는 명령
+_TARGETS_MEMBER = {"멤버승급", "멤버강등", "멤버삭제"}  # 대상이 멤버여야 하는 명령
 
 
 @dataclass(frozen=True)
@@ -71,22 +71,22 @@ def check(command: str, actor: Person, target: Person | None = None, rank: int |
         return "bot"
     if target.id == actor.id:
         return "self"
-    if command == "멤버 추가":
+    if command == "멤버추가":
         return "already" if target.level else None
     if target.owner:
-        return "owner" if command != "멤버 승급" else "not_lower"
+        return "owner" if command != "멤버승급" else "not_lower"
     if command in _TARGETS_MEMBER and not target.level:
         return "not_member"
     if not outranks(actor, target):
         return "not_lower"
-    if command == "멤버 승급":
+    if command == "멤버승급":
         if rank not in RANKS:
             return "bad_rank"
         if rank <= target.level:
             return "not_up"
         if rank > actor.level:
             return "rank_too_high"
-    if command == "멤버 강등":
+    if command == "멤버강등":
         if rank not in RANKS:
             return "bad_rank"
         if rank >= target.level:

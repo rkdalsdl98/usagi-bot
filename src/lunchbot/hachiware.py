@@ -14,7 +14,7 @@
                            목소리로 낸 소리는 둘째 종류의 말, 종류를 모르면 그 소리의 느낌(SOUNDS)
 
 번역 설정은 둘이고, 우사기 말이 나오는 곳에 따라 정해집니다 (is_on). 꺼져 있으면 그곳의 우사기 말은 무엇이든 번역하지 않습니다.
-  서버 전체 (/하치와레 전체 켜기·끄기, 직장인)  모두가 보는 채널: 우사기 채널 대화, 메뉴 추천·투표 결과, 명령의 결과 안내.
+  서버 전체 (/전체번역 켜기·끄기, 직장인)  모두가 보는 채널: 우사기 채널 대화, 메뉴 추천·투표 결과, 명령의 결과 안내.
                                          기본은 꺼짐 (settings/hachiware.json)
   개인 (/하치와레 번역 켜기·끄기, 누구나)      내 /우사기 1:1 스레드 안. 정하지 않은 사람은 서버 전체 설정을 따릅니다
                                          (settings/hachiware_people.json)
@@ -288,7 +288,7 @@ NOTICES = {
     "self": [[("puzzled", "자기 자신?"), ("sulky", "그건 안 돼…")]],
     "already": [[("puzzled", "{target}?"), ("happy", "벌써 {target_rank}~")]],
     "owner": [[("puzzled", "서버 주인?"), ("sulky", "건드리면 안 돼…")]],
-    "not_member": [[("puzzled", "{target}?"), ("sulky", "아직 멤버 아니야…"), ("happy", "먼저 `/멤버 추가`~")]],
+    "not_member": [[("puzzled", "{target}?"), ("sulky", "아직 멤버 아니야…"), ("happy", "먼저 `/멤버추가`~")]],
     "not_lower": [[("puzzled", "응?"), ("sulky", "더 낮은 등급만 돼…"), ("sulky", "{target} {target_rank}…")]],
     "not_up": [[("puzzled", "응?"), ("sulky", "벌써 {target_rank}야…")]],
     "not_down": [[("puzzled", "응?"), ("sulky", "지금 {target_rank}인데…")]],
@@ -354,7 +354,7 @@ def help_text(actor: str, level: int, usage: dict, mine: bool, menu: bool) -> st
     lines.append(f"-# 등급: {ladder}. 자기 등급과 그 아래 등급의 명령을 쓸 수 있어. "
                  f"1:1 스레드 번역은 {'켜져' if mine else '꺼져'} 있고, 채널 번역(메뉴 추천 포함)은 {'켜져' if menu else '꺼져'} 있어.")
     if not level:
-        lines.append("-# 멤버가 되려면 멤버한테 `/멤버 추가`를 부탁해!")
+        lines.append("-# 멤버가 되려면 멤버한테 `/멤버추가`를 부탁해!")
     return "\n".join(lines)
 
 

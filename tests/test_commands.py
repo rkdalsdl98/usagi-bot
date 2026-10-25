@@ -91,6 +91,16 @@ def bot(aws, monkeypatch):
     monkeypatch.setattr(commands.discord, "unarchive_thread", lambda token, tid: threads["unarchived"].append(tid))
     monkeypatch.setattr(config, "USAGI_CHANNEL_ID", HERE)
 
+    synced = []
+
+    def sync(guild_id, user_id, level):
+        if sync.fail:
+            raise urllib.error.HTTPError("u", 403, "Missing Permissions", {}, None)
+        synced.append((user_id, level))
+
+    sync.fail = False
+    monkeypatch.setattr(commands.roles, "sync", sync)
+
     hachiware.turn(True, "테스트")  # 대부분의 테스트는 번역이 켜진 채로
 
     def run(*a, **kw):
@@ -108,6 +118,7 @@ def bot(aws, monkeypatch):
 
     run.kicked, run.kick, run.sent, run.followed, run.posted, run.hooked = kicked, kick, sent, followed, posted, hooked
     run.threads = threads
+    run.synced, run.sync = synced, sync
     run.roster = lambda: members.load(GUILD)
     return run
 
@@ -142,45 +153,45 @@ def test_commands_are_valid_for_discord():
 
 
 def test_first_captain_is_the_server_owner(bot):
-    body, said = bot("멤버 추가", "own", "walk")
+    body, said = bot("멤버추가", "own", "walk")
     assert made_of(sound_of(body), messages.EXCITED)  # 첫 줄은 우사기 소리
     assert "<@walk>" in said and "행인 갑옷씨" in said
     assert bot.roster()["walk"]["rank"] == members.WALKER and bot.roster()["walk"]["by"] == "주인"
 
 
 def test_member_ladder(bot):
-    bot("멤버 추가", "own", "work")
-    bot("멤버 승급", "own", "work", rank=members.WORKER)
+    bot("멤버추가", "own", "work")
+    bot("멤버승급", "own", "work", rank=members.WORKER)
     assert bot.roster()["work"]["rank"] == members.WORKER
-    bot("멤버 추가", "work", "walk")  # 직장인도 추가할 수 있음
-    _, said = bot("멤버 승급", "work", "walk", rank=members.CAPTAIN)
+    bot("멤버추가", "work", "walk")  # 직장인도 추가할 수 있음
+    _, said = bot("멤버승급", "work", "walk", rank=members.CAPTAIN)
     assert "직장인 갑옷씨**까지만" in said and bot.roster()["walk"]["rank"] == members.WALKER  # 자기 등급까지만
-    _, said = bot("멤버 승급", "work", "walk", rank=members.WORKER)
+    _, said = bot("멤버승급", "work", "walk", rank=members.WORKER)
     assert "직장인 갑옷씨" in said and bot.roster()["walk"]["rank"] == members.WORKER
-    bot("멤버 강등", "own", "walk", rank=members.WALKER)
+    bot("멤버강등", "own", "walk", rank=members.WALKER)
     assert bot.roster()["walk"]["rank"] == members.WALKER
-    _, said = bot("멤버 삭제", "work", "walk")
+    _, said = bot("멤버삭제", "work", "walk")
     assert "<@walk>" in said and "walk" not in bot.roster()
 
 
 def test_refused_commands_explain_why(bot):
-    body, said = bot("멤버 추가", "x", "y")  # 멤버가 아닌 사람
+    body, said = bot("멤버추가", "x", "y")  # 멤버가 아닌 사람
     assert made_of(sound_of(body), REFUSED)
     assert len(sound_of(body).split()) == 3  # 번역이 세 토막이면 소리도 세 토막
     assert "행인 갑옷씨**부터" in said and bot.roster() == {}
-    bot("멤버 추가", "own", "walk")
+    bot("멤버추가", "own", "walk")
     _, said = bot("추방", "walk", "x")
     assert "직장인 갑옷씨**부터" in said and bot.kicked == []
-    _, said = bot("멤버 추가", "walk", "bot")
+    _, said = bot("멤버추가", "walk", "bot")
     assert "봇" in said and "bot" not in bot.roster()
-    _, said = bot("멤버 삭제", "walk", "own")
+    _, said = bot("멤버삭제", "walk", "own")
     assert "직장인 갑옷씨**부터" in said
 
 
 def test_kick(bot):
-    bot("멤버 추가", "own", "work")
-    bot("멤버 승급", "own", "work", rank=members.WORKER)
-    bot("멤버 추가", "own", "walk")
+    bot("멤버추가", "own", "work")
+    bot("멤버승급", "own", "work", rank=members.WORKER)
+    bot("멤버추가", "own", "walk")
     body, said = bot("추방", "work", "walk")
     assert sound_of(body) == "우라!"
     assert bot.kicked == [(GUILD, "walk", "우사기 명령 /추방 (직장인)")]
@@ -209,7 +220,7 @@ def test_personal_switch_is_for_your_1on1_thread_only(bot):
     assert hachiware.is_on("x") is True and hachiware.is_on("y") is False and hachiware.is_on() is False
     # 모두가 보는 우사기 채널에서는 개인 설정을 켜도 서버 전체(꺼짐)를 따름 → 우사기 소리만
     assert "\n" not in body["data"]["content"] and len(bot.hooked) == n
-    assert "\n" not in raw("멤버 추가", "x", "y")["data"]["content"] and len(bot.hooked) == n
+    assert "\n" not in raw("멤버추가", "x", "y")["data"]["content"] and len(bot.hooked) == n
     # 내 1:1 스레드 안에서는 개인 설정을 따름 → 하치와레가 그 스레드에 (우사기 채널 웹훅 + thread_id)
     raw("하치와레 번역 켜기", "x", thread=True)
     assert bot.hooked[-1][0] == HOOK + "?thread_id=t9" and "이미" in bot.hooked[-1][1]
@@ -217,7 +228,7 @@ def test_personal_switch_is_for_your_1on1_thread_only(bot):
     raw("하치와레 번역 끄기", "x", thread=True)  # 끄면 그때부터 내 스레드에서도 조용
     assert hachiware.is_on("x") is False and len(bot.hooked) == n
     hachiware.turn(True, "테스트")  # 서버 전체를 켜면 모두가 보는 채널은 개인 설정과 상관없이 번역
-    _, said = bot("멤버 추가", "x", "walk")
+    _, said = bot("멤버추가", "x", "walk")
     assert "행인 갑옷씨**부터" in said
     assert hachiware.is_on("x") is False and hachiware.is_on("y") is True  # 1:1 스레드: 정한 사람은 내 설정, 안 정한 사람은 서버 전체
     assert storage.get_json(storage.HACHIWARE_PEOPLE_KEY)["x"]["translate"] is False
@@ -225,24 +236,24 @@ def test_personal_switch_is_for_your_1on1_thread_only(bot):
 
 def test_server_wide_switch_needs_a_worker(bot):
     hachiware.turn(False, "테스트")
-    body = raw("하치와레 전체 켜기", "x")  # 멤버가 아님 → 거절 (전체가 꺼져 있어 우사기 소리만)
+    body = raw("전체번역 켜기", "x")  # 멤버가 아님 → 거절 (전체가 꺼져 있어 우사기 소리만)
     assert made_of(sound_of(body), REFUSED) and hachiware.is_on() is False
-    raw("멤버 추가", "own", "work")
-    raw("멤버 승급", "own", "work", rank=members.WORKER)
-    _, said = bot("하치와레 전체 켜기", "work")  # 켜자마자 하치와레가 채널에서 말함
+    raw("멤버추가", "own", "work")
+    raw("멤버승급", "own", "work", rank=members.WORKER)
+    _, said = bot("전체번역 켜기", "work")  # 켜자마자 하치와레가 채널에서 말함
     assert hachiware.is_on() is True and "메뉴" in said
     assert storage.get_json(storage.HACHIWARE_KEY)["by"] == "직장인"
-    body = raw("하치와레 전체 끄기", "work")  # 끄면 그때부터 채널에서 조용
+    body = raw("전체번역 끄기", "work")  # 끄면 그때부터 채널에서 조용
     assert hachiware.is_on() is False and "\n" not in body["data"]["content"]
 
 
 def test_switch_off_means_usagi_only(bot):
     hachiware.turn(False, "테스트")
     n = len(bot.hooked)
-    for args in [("멤버 추가", "own", "walk"), ("멤버 추가", "x", "y"), ("점심 추천", "x"), ("추방", "own", "x")]:
+    for args in [("멤버추가", "own", "walk"), ("멤버추가", "x", "y"), ("점심 추천", "x"), ("추방", "own", "x")]:
         body = raw(*args)
         assert "flags" not in body["data"] and "\n" not in body["data"]["content"]  # 우사기 소리만
-    body = raw("멤버 추가", "own", "y", channel=BARE)  # 웹훅이 없는 채널에서도 하치와레 말을 붙이지 않음
+    body = raw("멤버추가", "own", "y", channel=BARE)  # 웹훅이 없는 채널에서도 하치와레 말을 붙이지 않음
     assert "하치와레" not in body["data"]["content"]
     assert len(bot.hooked) == n and bot.sent == ["42"]  # 추천 메시지는 그대로 나감
     body = raw("도움", "x")  # /도움 은 꺼져 있어도 사용법을 보여 줌 (나만 보기)
@@ -252,13 +263,13 @@ def test_switch_off_means_usagi_only(bot):
 def test_help_lists_what_your_rank_can_use(bot):
     _, said = bot("도움", "x")
     assert "아직 멤버가 아니야" in said
-    assert "`/점심 추천`" in said and "`/하치와레 번역 켜기`" in said and "`/멤버 추가 [사람]`" not in said
-    assert "멤버한테 `/멤버 추가`를 부탁해" in said  # 멤버가 되는 법
-    bot("멤버 추가", "own", "walk")
+    assert "`/점심 추천`" in said and "`/하치와레 번역 켜기`" in said and "`/멤버추가 [사람]`" not in said
+    assert "멤버한테 `/멤버추가`를 부탁해" in said  # 멤버가 되는 법
+    bot("멤버추가", "own", "walk")
     _, said = bot("도움", "walk")
-    assert "**행인 갑옷씨**" in said and "`/멤버 추가 [사람]`" in said and "/추방" not in said
+    assert "**행인 갑옷씨**" in said and "`/멤버추가 [사람]`" in said and "/추방" not in said
     _, said = bot("도움", "own")
-    assert "**대장 갑옷씨**" in said and "`/추방 [사람]`" in said and "`/멤버 승급 [사람] [등급]`" in said
+    assert "**대장 갑옷씨**" in said and "`/추방 [사람]`" in said and "`/멤버승급 [사람] [등급]`" in said
     assert "1:1 스레드 번역은 켜져 있고" in said and "채널 번역(메뉴 추천 포함)은 켜져 있어" in said
 
 
@@ -308,9 +319,9 @@ def test_recommendation_failure_is_reported(bot, monkeypatch):
 def test_only_help_is_private(bot):
     body, said = bot("도움", "x")  # 웹훅이 있는 채널에서도 /도움 은 나만 보기 (답 안에 하치와레 말)
     assert "`/도움`" in said
-    body, said = bot("멤버 추가", "own", "y", channel=BARE)  # 웹훅이 없으면 답 아래에 하치와레 말, 모두가 봄
+    body, said = bot("멤버추가", "own", "y", channel=BARE)  # 웹훅이 없으면 답 아래에 하치와레 말, 모두가 봄
     assert made_of(sound_of(body), messages.EXCITED) and "<@y>" in said
-    body, said = bot("멤버 추가", "x", "walk", channel=BARE)  # 거절도 모두가 봄
+    body, said = bot("멤버추가", "x", "walk", channel=BARE)  # 거절도 모두가 봄
     assert "행인 갑옷씨**부터" in said
 
 
@@ -363,3 +374,30 @@ def test_usagi_thread_problems(bot, monkeypatch):
     monkeypatch.setattr(config, "USAGI_CHANNEL_ID", "")
     _, said = bot("우사기", "x")
     assert "USAGI_CHANNEL_ID" in said
+
+
+
+def test_rank_changes_update_discord_roles(bot):
+    bot("멤버추가", "own", "walk")
+    assert bot.synced == [("walk", members.WALKER)]  # 응답 뒤에 그 사람의 갑옷씨 역할을 맞춤
+    bot("멤버승급", "own", "walk", rank=members.WORKER)
+    bot("멤버강등", "own", "walk", rank=members.WALKER)
+    bot("멤버삭제", "own", "walk")
+    assert bot.synced == [("walk", 1), ("walk", 2), ("walk", 1), ("walk", 0)]
+    bot("멤버추가", "x", "y")  # 거절된 명령은 역할을 건드리지 않음
+    assert len(bot.synced) == 4
+
+
+def test_role_failure_is_told_to_the_person_who_used_the_command(bot):
+    bot.sync.fail = True  # 봇에 '역할 관리' 권한이 없거나 역할 순서가 낮음
+    bot("멤버추가", "own", "walk")
+    assert bot.roster()["walk"]["rank"] == members.WALKER  # 등급은 그대로 바뀜
+    app, token, text, private = bot.followed[-1]
+    assert private is True and "역할 관리" in text  # 쓴 사람에게만 알림
+
+
+def test_each_top_level_command_needs_one_rank():
+    # 서버 설정 → 연동의 명령별 권한은 맨 앞 명령 단위로만 걸리므로, 그 아래는 필요한 등급이 모두 같아야 등급별로 나눌 수 있다
+    for top in commands.DEFINITIONS:
+        needs = {need for command, need in members.NEEDS.items() if command.split()[0] == top["name"]}
+        assert len(needs) == 1, (top["name"], needs)

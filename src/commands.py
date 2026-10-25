@@ -4,14 +4,14 @@
   /우사기                        나와 우사기 봇만 있는 비공개 스레드에서 1:1 대화 (모두)
   /점심 추천, /저녁 추천           오점뭐·오저뭐로 메뉴 추천 보내기 (모두)
   /하치와레 번역 켜기·끄기          내 /우사기 1:1 스레드의 번역 켜고 끄기 (모두, 개인 설정)
-  /하치와레 전체 켜기·끄기          모두가 보는 채널의 번역 켜고 끄기: 우사기 채널 대화, 메뉴 추천·투표 결과, 명령 안내
+  /전체번역 켜기·끄기          모두가 보는 채널의 번역 켜고 끄기: 우사기 채널 대화, 메뉴 추천·투표 결과, 명령 안내
                                (직장인 갑옷씨 이상, 서버 전체, 기본 꺼짐)
-  /멤버 추가 [사람]               멤버가 아닌 사람을 행인 갑옷씨로 (행인 갑옷씨 이상)
-  /멤버 승급·강등 [사람] [등급]     자기보다 낮은 멤버의 등급 바꾸기 (직장인 갑옷씨 이상)
-  /멤버 삭제 [사람]               자기보다 낮은 멤버를 멤버에서 빼기 (직장인 갑옷씨 이상)
+  /멤버추가 [사람]               멤버가 아닌 사람을 행인 갑옷씨로 (행인 갑옷씨 이상)
+  /멤버승급·강등 [사람] [등급]     자기보다 낮은 멤버의 등급 바꾸기 (직장인 갑옷씨 이상)
+  /멤버삭제 [사람]               자기보다 낮은 멤버를 멤버에서 빼기 (직장인 갑옷씨 이상)
   /추방 [사람]                   자기보다 낮은 사람을 서버에서 내보내기, 우사기가 '우라!' (직장인 갑옷씨 이상)
 
-등급 규칙은 lunchbot/members.py 에 있습니다.
+등급 규칙은 lunchbot/members.py 에 있습니다. 등급이 바뀌면 응답 뒤에 디스코드 갑옷씨 역할도 맞춥니다 (lunchbot/roles.py).
 
 명령을 쓰면 우사기가 그 채널에 소리로 답하고(명령에 대한 응답, 모두가 봄), 하치와레 번역이 켜져 있으면 이어서
 그 채널의 하치와레 웹훅이 결과나 까닭을 알립니다. 번역이 꺼져 있으면 하치와레는 말하지 않고 우사기 소리만 나갑니다. 하치와레 말은 응답을 돌려준 뒤에 보내야 우사기 소리 다음에 올라가므로 '나중에 할 일'(later)로
@@ -29,7 +29,7 @@ import logging
 import urllib.error
 from dataclasses import dataclass, field
 
-from lunchbot import config, discord, hachiware, meals, members, messages, storage
+from lunchbot import config, discord, hachiware, meals, members, messages, roles, storage
 import recommend
 
 log = logging.getLogger()
@@ -51,7 +51,9 @@ def _sub(name: str, description: str, *options) -> dict:
     return {"type": SUB, "name": name, "description": description, "options": list(options)}
 
 
-# 디스코드에 등록할 명령. 이름에 띄어쓰기를 못 넣어서 '명령 → 묶음 → 하위 명령'으로 '/하치와레 번역 켜기'처럼 보이게 함
+# 디스코드에 등록할 명령. 이름에 띄어쓰기를 못 넣어서 '명령 → 묶음 → 하위 명령'으로 '/하치와레 번역 켜기'처럼 보이게 함.
+# 서버 설정 → 연동의 명령별 권한은 맨 앞 명령 단위로만 걸리므로, 필요한 등급이 다른 명령은 맨 앞 명령을 따로 둠
+# (/전체번역 은 /하치와레 와, /멤버추가 는 /멤버승급 과 따로)
 DEFINITIONS = [
     {"name": "도움", "description": "내 등급으로 쓸 수 있는 우사기 명령과 사용법을 하치와레가 알려 줘요", "contexts": [0]},
     {"name": "우사기", "description": "나와 우사기 봇만 있는 비공개 스레드에서 1:1로 대화해요", "contexts": [0]},
@@ -59,19 +61,21 @@ DEFINITIONS = [
      "options": [_sub("추천", "오점뭐 채널에 점심 메뉴 5곳을 추천해요")]},
     {"name": "저녁", "description": "저녁 메뉴", "contexts": [0],
      "options": [_sub("추천", "오저뭐 채널에 야근 저녁 메뉴(식사 4곳 + 술집 1곳)를 추천해요")]},
-    {"name": "하치와레", "description": "하치와레", "contexts": [0],
+    {"name": "하치와레", "description": "하치와레 (누구나)", "contexts": [0],
      "options": [{"type": GROUP, "name": "번역", "description": "내 /우사기 1:1 스레드의 번역 (개인 설정)",
                   "options": [_sub("켜기", "내 /우사기 1:1 스레드에서 우사기 말을 번역해요"),
-                              _sub("끄기", "내 /우사기 1:1 스레드의 번역을 꺼요")]},
-                 {"type": GROUP, "name": "전체", "description": "모두가 보는 채널의 번역 (서버 전체, 직장인 갑옷씨 이상)",
-                  "options": [_sub("켜기", "우사기 채널·메뉴 추천·투표 결과·명령 안내를 번역해요 (직장인 갑옷씨 이상)"),
-                              _sub("끄기", "모두가 보는 채널의 번역을 꺼요 (직장인 갑옷씨 이상)")]}]},
-    {"name": "멤버", "description": "갑옷씨 멤버와 등급", "contexts": [0], "options": [
-        _sub("추가", "멤버가 아닌 사람을 행인 갑옷씨로 등록해요 (행인 갑옷씨 이상)", _person("등록할 사람")),
-        _sub("승급", "나보다 낮은 멤버를 내 등급까지 올려요 (직장인 갑옷씨 이상)", _person("올릴 멤버"), _rank("올릴 등급")),
-        _sub("강등", "나보다 낮은 멤버의 등급을 내려요 (직장인 갑옷씨 이상)", _person("내릴 멤버"), _rank("내릴 등급")),
-        _sub("삭제", "나보다 낮은 멤버를 멤버에서 빼요 (직장인 갑옷씨 이상)", _person("뺄 멤버")),
-    ]},
+                              _sub("끄기", "내 /우사기 1:1 스레드의 번역을 꺼요")]}]},
+    {"name": "전체번역", "description": "모두가 보는 채널의 하치와레 번역 (서버 전체, 직장인 갑옷씨 이상)", "contexts": [0],
+     "options": [_sub("켜기", "우사기 채널·메뉴 추천·투표 결과·명령 안내를 번역해요 (직장인 갑옷씨 이상)"),
+                 _sub("끄기", "모두가 보는 채널의 번역을 꺼요 (직장인 갑옷씨 이상)")]},
+    {"name": "멤버추가", "description": "멤버가 아닌 사람을 행인 갑옷씨로 등록해요 (행인 갑옷씨 이상)", "contexts": [0],
+     "options": [_person("등록할 사람")]},
+    {"name": "멤버승급", "description": "나보다 낮은 멤버를 내 등급까지 올려요 (직장인 갑옷씨 이상)", "contexts": [0],
+     "options": [_person("올릴 멤버"), _rank("올릴 등급")]},
+    {"name": "멤버강등", "description": "나보다 낮은 멤버의 등급을 내려요 (직장인 갑옷씨 이상)", "contexts": [0],
+     "options": [_person("내릴 멤버"), _rank("내릴 등급")]},
+    {"name": "멤버삭제", "description": "나보다 낮은 멤버를 멤버에서 빼요 (직장인 갑옷씨 이상)", "contexts": [0],
+     "options": [_person("뺄 멤버")]},
     {"name": "추방", "description": "나보다 낮은 사람을 서버에서 내보내요 (직장인 갑옷씨 이상)", "contexts": [0],
      "options": [_person("내보낼 사람")]},
 ]
@@ -84,13 +88,13 @@ USAGE = {
     "저녁 추천": ("/저녁 추천", "오저뭐에 야근 저녁 메뉴 추천 보내기"),
     "하치와레 번역 켜기": ("/하치와레 번역 켜기", "내 /우사기 1:1 스레드에서 하치와레가 번역"),
     "하치와레 번역 끄기": ("/하치와레 번역 끄기", "내 1:1 스레드의 번역 멈추기"),
-    "멤버 추가": ("/멤버 추가 [사람]", "멤버가 아닌 사람을 행인 갑옷씨로 등록"),
-    "멤버 승급": ("/멤버 승급 [사람] [등급]", "나보다 낮은 멤버를 내 등급까지 올리기"),
-    "멤버 강등": ("/멤버 강등 [사람] [등급]", "나보다 낮은 멤버의 등급 내리기"),
-    "멤버 삭제": ("/멤버 삭제 [사람]", "나보다 낮은 멤버를 멤버에서 빼기"),
+    "멤버추가": ("/멤버추가 [사람]", "멤버가 아닌 사람을 행인 갑옷씨로 등록"),
+    "멤버승급": ("/멤버승급 [사람] [등급]", "나보다 낮은 멤버를 내 등급까지 올리기"),
+    "멤버강등": ("/멤버강등 [사람] [등급]", "나보다 낮은 멤버의 등급 내리기"),
+    "멤버삭제": ("/멤버삭제 [사람]", "나보다 낮은 멤버를 멤버에서 빼기"),
     "추방": ("/추방 [사람]", "나보다 낮은 사람을 서버에서 내보내기 (우사기가 '우라!')"),
-    "하치와레 전체 켜기": ("/하치와레 전체 켜기", "모두가 보는 채널(우사기 채널·메뉴 추천·투표 결과·명령 안내) 번역 켜기"),
-    "하치와레 전체 끄기": ("/하치와레 전체 끄기", "모두가 보는 채널의 번역 끄기"),
+    "전체번역 켜기": ("/전체번역 켜기", "모두가 보는 채널(우사기 채널·메뉴 추천·투표 결과·명령 안내) 번역 켜기"),
+    "전체번역 끄기": ("/전체번역 끄기", "모두가 보는 채널의 번역 끄기"),
 }
 
 
@@ -118,7 +122,7 @@ def _owner(guild_id: str):
 
 
 def parse(data: dict) -> tuple[str, dict]:
-    """('멤버 추가', {'사람': '123'}). 하위 명령과 묶음은 이름에 이어 붙입니다."""
+    """('멤버추가', {'사람': '123'}). 하위 명령과 묶음은 이름에 이어 붙입니다."""
     words, opts = [data["name"]], data.get("options") or []
     while opts and opts[0]["type"] in (SUB, GROUP):
         words.append(opts[0]["name"])
@@ -212,23 +216,38 @@ def _stamp(actor) -> dict:
     return {"by": actor.name, "at": config.now_kst().isoformat()}
 
 
-def _add(actor, target, roster, guild_id, **_) -> Outcome:
+def _role_job(guild_id: str, user_id: str, level: int, interaction: dict):
+    """응답 뒤에 그 사람의 갑옷씨 역할을 맞춥니다. 못 맞추면 명령을 쓴 사람에게만 알립니다 (등급은 이미 바뀜)."""
+    def run():
+        try:
+            roles.sync(guild_id, user_id, level)
+        except OSError as e:  # HTTPError(권한·역할 순서)·연결 오류
+            log.warning("갑옷씨 역할을 못 맞춤 (%s): %s", user_id, e)
+            discord.followup(interaction["application_id"], interaction["token"],
+                             f"{messages.huh_sound()}\n-# 갑옷씨 역할을 못 맞췄어요. 봇 역할에 '역할 관리' 권한이 있고, "
+                             "봇 역할이 갑옷씨 역할들보다 위에 있는지 확인해 주세요.")
+
+    return run
+
+
+def _add(actor, target, roster, guild_id, interaction, **_) -> Outcome:
     roster[target.id] = {"rank": members.WALKER, "name": target.name, **_stamp(actor)}
     members.save(guild_id, roster)
-    return _said("added", target=_mention(target))
+    return _said("added", later=[_role_job(guild_id, target.id, members.WALKER, interaction)], target=_mention(target))
 
 
-def _set_rank(actor, target, rank, roster, guild_id, **_) -> Outcome:
+def _set_rank(actor, target, rank, roster, guild_id, interaction, **_) -> Outcome:
     up = rank > target.level
     roster[target.id] = {**roster.get(target.id, {}), "rank": rank, "name": target.name, **_stamp(actor)}
     members.save(guild_id, roster)
-    return _said("promoted" if up else "demoted", target=_mention(target), new=f"**{members.RANKS[rank]}**")
+    return _said("promoted" if up else "demoted", later=[_role_job(guild_id, target.id, rank, interaction)],
+                 target=_mention(target), new=f"**{members.RANKS[rank]}**")
 
 
-def _remove(target, roster, guild_id, **_) -> Outcome:
+def _remove(target, roster, guild_id, interaction, **_) -> Outcome:
     roster.pop(target.id, None)
     members.save(guild_id, roster)
-    return _said("removed", target=_mention(target))
+    return _said("removed", later=[_role_job(guild_id, target.id, 0, interaction)], target=_mention(target))
 
 
 def _kick(actor, target, roster, guild_id, **_) -> Outcome:
@@ -345,11 +364,11 @@ RUN = {
     "저녁 추천": _recommend(meals.DINNER),
     "하치와레 번역 켜기": _translate(True),
     "하치와레 번역 끄기": _translate(False),
-    "하치와레 전체 켜기": _menu_translate(True),
-    "하치와레 전체 끄기": _menu_translate(False),
-    "멤버 추가": _add,
-    "멤버 승급": _set_rank,
-    "멤버 강등": _set_rank,
-    "멤버 삭제": _remove,
+    "전체번역 켜기": _menu_translate(True),
+    "전체번역 끄기": _menu_translate(False),
+    "멤버추가": _add,
+    "멤버승급": _set_rank,
+    "멤버강등": _set_rank,
+    "멤버삭제": _remove,
     "추방": _kick,
 }
