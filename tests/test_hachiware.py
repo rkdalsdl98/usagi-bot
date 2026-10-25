@@ -96,7 +96,8 @@ def test_notice_scripts_are_paired(key, kw):
 
 def test_every_command_result_has_a_script():
     kw = {"actor": "<@1>", "target": "<@2>", "need": "n", "now": "w", "rank": "r", "target_rank": "t", "new": "x",
-          "channel": "<#1>", "meal": "점심", "setting": "S", "thread": "<#t1>"}
+          "channel": "<#1>", "meal": "점심", "setting": "S", "thread": "<#t1>",
+          "topic": "첫인상", "round": 1, "it": "민지", "host": "현우", "n": 2, "winner": "민지", "date": "3월 5일"}
     for key in hachiware.NOTICES:
         assert_paired(hachiware.notice_script(key, random.Random(1), **kw))
 
@@ -233,3 +234,12 @@ def test_menu_translation_sometimes_adds_her_thought(about, kw):
 def test_greeting_in_the_1on1_thread_is_paired():
     for seed in range(30):
         assert_paired(hachiware.greet_script(random.Random(seed)))
+
+
+def test_welcome_line_carries_the_birthday_notice():
+    """새로 온 사람 환영: 하치와레가 우사기 말을 옮기고, 따옴표 밖에서 생일 안내(선택, 알림)를 해 준다."""
+    script = hachiware.welcome_script(random.Random(1))
+    line = hachiware.welcome_line(script, random.Random(1))
+    quoted, guide = line.split('"')[1], line.split('"')[-1]
+    assert quoted == script.text
+    assert all(w in guide for w in ("선택", "버튼", "9시", "축하"))

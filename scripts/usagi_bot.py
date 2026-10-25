@@ -14,6 +14,10 @@
     (src/lunchbot/hachiware.py). HACHIWARE_WEBHOOK_URLS 중 우사기 채널 웹훅으로 보내고, 없으면 번역하지 않습니다.
     켜짐/꺼짐은 버튼 서버와 같은 저장소(.local-s3/settings/hachiware.json)에서 답할 때마다 읽습니다
 
+새로 들어온 사람은 우사기 채널에서 불러 환영하고, 생일 입력(선택)을 권합니다 (버튼 → 입력창, 처리는 버튼 서버).
+생일 아침 9시에는 우사기 채널에서 그 사람을 불러 정해 둔 우사기 소리와 하치와레 번역 한 세트로 축하합니다
+(번역 설정과 상관없이 늘, lunchbot/birthdays.py). 환영에는 SERVER MEMBERS INTENT 가 필요합니다.
+
 채팅 내용에 맞춰 답하려면 개발자 포털 Bot 탭의 MESSAGE CONTENT INTENT 를 켜야 합니다.
 시작할 때 켜져 있는지 확인하고, 꺼져 있으면 내용을 읽지 않고 무작위 소리로 답합니다 (켠 뒤 봇을 다시 띄우기).
 꺼져 있어도 우사기 봇을 @멘션한 채팅은 디스코드가 내용을 보내 주므로 내용에 맞춰 답합니다.
@@ -35,7 +39,7 @@ local_env.load()
 sys.path.insert(0, str(local_env.ENV_FILE.parent / "src"))
 import local_storage  # noqa: E402  (.env 의 LOCAL_S3_DIR 을 읽도록 load 뒤에 import)
 import discord  # noqa: E402  (pip 의 discord.py 라이브러리. 우리 코드의 lunchbot.discord 와는 다른 것)
-from lunchbot import chat, config, hachiware  # noqa: E402
+from lunchbot import birthdays, chat, config, hachiware  # noqa: E402
 from lunchbot import discord as discord_api  # noqa: E402
 
 GATHER_S = 1.5  # 이만큼 새 채팅이 없으면 다 보낸 것으로 보고 답합니다
@@ -120,15 +124,84 @@ def hachiware_webhook(urls, channel_of=None) -> str:
     return url
 
 
-def make_client(read_content: bool) -> discord.Client:
+BIRTHDAY_HOUR = 9  # 생일 축하 시각 (KST). 봇이 그때 꺼져 있었으면 그날 켜지자마자
+def welcome_payload(user_id: str, sound: str, guide: str = "") -> dict:
+    """새로 들어온 사람 환영: 그 사람을 부르는 우사기 소리 + '생일 알려 주기' 버튼 (누르면 입력창, 버튼 서버가 처리).
+
+    생일 안내는 하치와레가 합니다. 하치와레 웹훅이 없을 때만 guide 를 같은 메시지에 붙입니다.
+    """
+    button = {"type": 2, "style": 1, "label": "생일 알려 주기 (선택)", "custom_id": "bday:open"}
+    content = f"<@{user_id}> {sound}"
+    if guide:
+        content += f"\n> **하치와레** {guide}"
+    return {"content": content, "components": [{"type": 1, "components": [button]}],
+            "allowed_mentions": {"parse": [], "users": [str(user_id)]}}
+
+
+def welcome(user_id: str) -> None:
+    """생일 안내가 꼭 닿아야 하니 번역 설정과 상관없이 하치와레가 말합니다 (버튼은 웹훅에 못 달아 우사기 메시지에)."""
+    script = hachiware.welcome_script()
+    line = hachiware.welcome_line(script)
+    hook = hachiware.hooks().get(str(config.USAGI_CHANNEL_ID))
+    discord_api.send_message(config.DISCORD_BOT_TOKEN, config.USAGI_CHANNEL_ID,
+                             welcome_payload(user_id, script.sound, "" if hook else line))
+    if hook:
+        discord_api.execute_webhook(hook, line)
+
+
+def celebrate(guild_id: str, day) -> list:
+    """그날 생일인 사람마다 우사기 채널에서 축하합니다 (하루 한 번). 정해 둔 소리와 하치와레 번역을 한 세트로 늘."""
+    if not birthdays.mark_sent(guild_id, day):
+        return []
+    people = birthdays.today(guild_id, day)
+    hook = hachiware.hooks().get(str(config.USAGI_CHANNEL_ID))
+    for uid in people:
+        content = f"<@{uid}> {hachiware.BIRTHDAY.sound}"
+        if not hook:  # 하치와레 웹훅이 없으면 같은 메시지에
+            content += f"\n> **하치와레** {hachiware.BIRTHDAY_LINE}"
+        discord_api.send_message(config.DISCORD_BOT_TOKEN, config.USAGI_CHANNEL_ID,
+                                 {"content": content, "allowed_mentions": {"parse": [], "users": [str(uid)]}})
+        if hook:
+            discord_api.execute_webhook(hook, hachiware.BIRTHDAY_LINE)
+    return people
+
+
+async def birthday_loop(client) -> None:
+    while True:
+        now = config.now_kst()
+        channel = client.get_channel(int(config.USAGI_CHANNEL_ID))
+        if now.hour >= BIRTHDAY_HOUR and channel is not None:
+            try:
+                people = await asyncio.to_thread(celebrate, str(channel.guild.id), now.date())
+                if people:
+                    log.info("생일 축하: %s", people)
+            except Exception:  # 다음 분에 다시 (오늘 이미 했으면 mark_sent 가 막음)
+                log.exception("생일 축하 실패")
+        await asyncio.sleep(60)
+
+
+def make_client(read_content: bool, read_members: bool = False) -> discord.Client:
     intents = discord.Intents.none()
     intents.guilds = True
     intents.guild_messages = True
     intents.message_content = read_content
+    intents.members = read_members  # 새로 들어온 사람 환영
     client = discord.Client(intents=intents, allowed_mentions=discord.AllowedMentions.none())
 
     @client.event
+    async def on_member_join(member):
+        if member.bot or not config.USAGI_CHANNEL_ID:
+            return
+        try:
+            await asyncio.to_thread(welcome, str(member.id))
+            log.info("%s 환영", member.display_name)
+        except Exception:
+            log.exception("환영 실패")
+
+    @client.event
     async def on_ready():
+        if not getattr(client, "birthday_task", None):
+            client.birthday_task = asyncio.create_task(birthday_loop(client))
         how = "내용에 맞춰" if read_content else "내용을 읽지 않고 무작위로"
         log.info("%s 로 연결됨. 채널 %s 의 채팅에 %s 답합니다", client.user, config.USAGI_CHANNEL_ID, how)
         if hachiware_url:
@@ -153,14 +226,17 @@ def main():
     local_storage.install()
 
     read_content = discord_api.can_read_messages(config.DISCORD_BOT_TOKEN)
+    read_members = discord_api.can_read_members(config.DISCORD_BOT_TOKEN)
     hachiware_url = hachiware_webhook(config.HACHIWARE_WEBHOOK_URLS)
     if not read_content:
         log.info("MESSAGE CONTENT INTENT 가 꺼져 있습니다. 개발자 포털 Bot 탭에서 켜고 다시 띄우면 채팅 내용에 맞춰 답합니다")
+    if not read_members:
+        log.info("SERVER MEMBERS INTENT 가 꺼져 있어 새로 들어온 사람을 환영하지 않습니다")
     try:
-        make_client(read_content).run(config.DISCORD_BOT_TOKEN, log_handler=None)
+        make_client(read_content, read_members).run(config.DISCORD_BOT_TOKEN, log_handler=None)
     except discord.PrivilegedIntentsRequired:  # 확인한 뒤에 포털에서 꺼졌을 때
-        log.warning("채팅 내용 읽기 권한이 거절되어 내용을 읽지 않고 다시 연결합니다")
-        make_client(False).run(config.DISCORD_BOT_TOKEN, log_handler=None)
+        log.warning("특권 인텐트가 거절되어 채팅 내용·멤버 없이 다시 연결합니다")
+        make_client(False, False).run(config.DISCORD_BOT_TOKEN, log_handler=None)
 
 
 if __name__ == "__main__":

@@ -21,7 +21,8 @@ def test_rank_names_in_order():
 
 
 def test_who_can_use_which_command():
-    everyone = ["도움", "우사기", "점심 추천", "저녁 추천", "하치와레 번역 켜기", "하치와레 번역 끄기"]
+    everyone = ["도움", "우사기", "점심 추천", "저녁 추천", "하치와레 번역 켜기", "하치와레 번역 끄기", "생일 등록", "생일 지우기",
+                "게임 시작", "게임 답", "게임 결과", "게임 점수", "게임 끝"]
     assert members.allowed(0) == everyone
     assert members.allowed(WALKER) == everyone + ["멤버추가"]
     assert members.allowed(WORKER) == members.allowed(CAPTAIN) == everyone + [

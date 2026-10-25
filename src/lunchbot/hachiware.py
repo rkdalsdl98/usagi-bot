@@ -317,6 +317,29 @@ NOTICES = {
     "menu_on_already": [[("puzzled", "응?"), ("happy", "채널 번역 이미 하고 있어~")]],
     "menu_off": [[("sulky", "채널 번역…"), ("sulky", "잠깐 쉬어…")]],
     "menu_off_already": [[("puzzled", "응?"), ("sulky", "채널 번역 이미 쉬고 있어…")]],
+    # 이미지 랜덤 주제 게임 (게임 안에서는 번역 설정과 상관없이 늘 하치와레가 번역)
+    "game_setup": [[("excited", "게임!"), ("happy", "주제는 {topic}~"), ("excited", "같이 할 사람!")]],
+    "game_round": [[("excited", "{round}라운드!"), ("happy", "술래는 {it}~"), ("excited", "사회자는 {host}!")]],
+    "game_all_in": [[("excited", "{host}!"), ("happy", "답 다 모였어~")]],
+    "game_answered": [[("happy", "받았어~"), ("excited", "비밀이야!")]],
+    "game_reveal": [[("puzzled", "쉿?"), ("happy", "사회자만 보는 답~")]],
+    "game_score": [[("excited", "{it} {n}개!"), ("happy", "점수 올라간다~")]],
+    "game_scoreboard": [[("happy", "지금 점수~"), ("excited", "힘내!")]],
+    "game_end": [[("excited", "게임 끝!"), ("happy", "1등은 {winner}~")]],
+    "game_cancel": [[("sulky", "게임…"), ("sulky", "그만할래…")]],
+    "game_not_running": [[("puzzled", "응?"), ("sulky", "하는 게임이 없어…")]],
+    "game_already": [[("puzzled", "응?"), ("sulky", "벌써 게임 중이야…")]],
+    "game_not_starter": [[("puzzled", "응?"), ("sulky", "시작한 사람만 돼…")]],
+    "game_too_few": [[("puzzled", "응?"), ("sulky", "셋은 있어야 해…")]],
+    "game_not_player": [[("puzzled", "응?"), ("sulky", "참가자만 돼…")]],
+    "game_is_it": [[("puzzled", "응?"), ("sulky", "술래는 답 안 내…")]],
+    "game_not_host": [[("puzzled", "응?"), ("sulky", "사회자만 돼…")]],
+    "game_bad_count": [[("puzzled", "응?"), ("sulky", "답보다 많이는 못 맞혀…")]],
+    # 생일 (선택)
+    "bday_saved": [[("excited", "{date}!"), ("happy", "기억할게~")]],
+    "bday_bad": [[("puzzled", "응?"), ("sulky", "그런 날짜는 없어…")]],
+    "bday_removed": [[("sulky", "생일…"), ("sulky", "지웠어…")]],
+    "bday_none": [[("puzzled", "응?"), ("sulky", "적힌 생일이 없어…")]],
     "usagi_thread": [[("excited", "{thread}!"), ("happy", "거기서 기다릴게~")],
                      [("happy", "둘이서 놀자~"), ("excited", "{thread}로 와!")]],
     "thread_failed": [[("puzzled", "어?"), ("sulky", "스레드를 못 만들었어…"), ("sulky", "'비공개 스레드 만들기' 권한 문제…")]],
@@ -329,6 +352,27 @@ GREETS = [
     [("excited", "야호!"), ("happy", "우리만의 방~")],
     [("happy", "기다렸어~"), ("excited", "놀자!")],
 ]
+
+
+# 생일 축하: 정해 둔 우사기 소리와 하치와레 번역 한 세트 (늘 같이 보냄)
+BIRTHDAY = Script((("와앗!", "생일 축하해!"), ("야하~", "오늘은 주인공~"), ("우라!", "맛있는 거 먹자!")))
+BIRTHDAY_LINE = f'"{BIRTHDAY.text}"래!'  # 하치와레 번역도 정해 둔 한 줄
+# 새로 들어온 사람 환영: 하치와레가 우사기 말을 옮긴 뒤 따옴표 밖에서 생일 안내를 해 줌 (버튼은 우사기 메시지에)
+WELCOMES = [[("excited", "어서 와!"), ("happy", "반가워~")], [("happy", "안녕~"), ("excited", "환영해!")]]
+WELCOME_GUIDE = "생일은 선택이야! 위 버튼으로 알려 주면 생일 아침 9시에 여기서 축하 알림을 보내 줄게~"
+
+
+def birthday_script() -> Script:
+    return BIRTHDAY
+
+
+def welcome_script(rng=None) -> Script:
+    rng = rng or random
+    return speak(rng.choice(WELCOMES), rng)
+
+
+def welcome_line(script: Script, rng=None) -> str:
+    return f"{relay(script.text, rng)} {WELCOME_GUIDE}"
 
 
 def greet_script(rng=None) -> Script:

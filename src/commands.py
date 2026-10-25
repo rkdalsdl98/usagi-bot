@@ -10,6 +10,8 @@
   /멤버승급·강등 [사람] [등급]     자기보다 낮은 멤버의 등급 바꾸기 (직장인 갑옷씨 이상)
   /멤버삭제 [사람]               자기보다 낮은 멤버를 멤버에서 빼기 (직장인 갑옷씨 이상)
   /추방 [사람]                   자기보다 낮은 사람을 서버에서 내보내기, 우사기가 '우라!' (직장인 갑옷씨 이상)
+  /생일 등록·지우기               생일 알려 주기 (선택, 생일 아침에 우사기 채널에서 축하) (모두)
+  /게임 시작·답·결과·점수·끝        이미지 랜덤 주제 게임 (모두, 게임 안의 역할은 lunchbot/game.py)
 
 등급 규칙은 lunchbot/members.py 에 있습니다. 등급이 바뀌면 응답 뒤에 디스코드 갑옷씨 역할도 맞춥니다 (lunchbot/roles.py).
 
@@ -26,16 +28,18 @@
 """
 import json
 import logging
+import random
 import urllib.error
 from dataclasses import dataclass, field
 
-from lunchbot import config, discord, hachiware, meals, members, messages, roles, storage
+from lunchbot import birthdays, config, discord, game, hachiware, meals, members, messages, roles, storage
 import recommend
 
 log = logging.getLogger()
 
-SUB, GROUP, INTEGER, USER = 1, 2, 4, 6  # 명령 옵션 종류
-CHANNEL_MESSAGE, EPHEMERAL = 4, 64
+SUB, GROUP, STRING, INTEGER, USER = 1, 2, 3, 4, 6  # 명령 옵션 종류
+CHANNEL_MESSAGE, UPDATE_MESSAGE, MODAL, EPHEMERAL = 4, 7, 9, 64
+ROW, BUTTON, TEXT_INPUT, USER_SELECT = 1, 2, 4, 5  # 컴포넌트 종류
 
 
 def _person(description: str) -> dict:
@@ -45,6 +49,15 @@ def _person(description: str) -> dict:
 def _rank(description: str) -> dict:
     choices = [{"name": name, "value": level} for level, name in members.RANKS.items()]
     return {"type": INTEGER, "name": "등급", "description": description, "required": True, "choices": choices}
+
+
+def _text(name: str, description: str, max_length: int) -> dict:
+    return {"type": STRING, "name": name, "description": description, "required": True, "max_length": max_length}
+
+
+def _int(name: str, description: str, low: int, high: int) -> dict:
+    return {"type": INTEGER, "name": name, "description": description, "required": True,
+            "min_value": low, "max_value": high}
 
 
 def _sub(name: str, description: str, *options) -> dict:
@@ -78,6 +91,18 @@ DEFINITIONS = [
      "options": [_person("뺄 멤버")]},
     {"name": "추방", "description": "나보다 낮은 사람을 서버에서 내보내요 (직장인 갑옷씨 이상)", "contexts": [0],
      "options": [_person("내보낼 사람")]},
+    {"name": "생일", "description": "생일 (선택, 생일 아침에 우사기 채널에서 축하해요)", "contexts": [0], "options": [
+        _sub("등록", "생일을 알려 줘요. 생일 아침 9시에 우사기 채널에서 축하 알림을 보내요",
+             _int("월", "생일 월", 1, 12), _int("일", "생일 일", 1, 31)),
+        _sub("지우기", "알려 준 생일을 지워요"),
+    ]},
+    {"name": "게임", "description": "이미지 랜덤 주제 게임", "contexts": [0], "options": [
+        _sub("시작", "주제를 정하고 참가자를 골라 게임을 시작해요", _text("주제", "이번 게임의 주제", 100)),
+        _sub("답", "술래에 대한 내 생각을 보내요 (다른 사람에게는 안 보여요)", _text("내용", "주제에 맞춘 술래에 대한 생각", 200)),
+        _sub("결과", "사회자가 술래가 맞힌 수를 보내요", _int("맞힌수", "술래가 맞힌 답의 수", 0, 25)),
+        _sub("점수", "지금 점수판을 봐요"),
+        _sub("끝", "게임을 멈춰요 (시작한 사람, 대장 갑옷씨)"),
+    ]},
 ]
 
 # /도움 에 보일 사용법과 뜻 (순서는 members.NEEDS)
@@ -93,6 +118,13 @@ USAGE = {
     "멤버강등": ("/멤버강등 [사람] [등급]", "나보다 낮은 멤버의 등급 내리기"),
     "멤버삭제": ("/멤버삭제 [사람]", "나보다 낮은 멤버를 멤버에서 빼기"),
     "추방": ("/추방 [사람]", "나보다 낮은 사람을 서버에서 내보내기 (우사기가 '우라!')"),
+    "생일 등록": ("/생일 등록 [월] [일]", "생일 알려 주기 (선택, 생일 아침에 우사기 채널에서 축하)"),
+    "생일 지우기": ("/생일 지우기", "알려 준 생일 지우기"),
+    "게임 시작": ("/게임 시작 [주제]", "이미지 랜덤 주제 게임 시작 (참가자 고르기)"),
+    "게임 답": ("/게임 답 [내용]", "술래에 대한 내 생각 보내기 (나만 보여요)"),
+    "게임 결과": ("/게임 결과 [맞힌수]", "사회자가 술래가 맞힌 수 보내기"),
+    "게임 점수": ("/게임 점수", "지금 점수판 보기"),
+    "게임 끝": ("/게임 끝", "게임 멈추기 (시작한 사람, 대장 갑옷씨)"),
     "전체번역 켜기": ("/전체번역 켜기", "모두가 보는 채널(우사기 채널·메뉴 추천·투표 결과·명령 안내) 번역 켜기"),
     "전체번역 끄기": ("/전체번역 끄기", "모두가 보는 채널의 번역 끄기"),
 }
@@ -102,8 +134,11 @@ USAGE = {
 class Outcome:
     sound: str  # 우사기가 채널에 낼 소리
     notice: str  # 하치와레가 할 말
-    private: bool = False  # 명령을 쓴 사람에게만 보일지 (/도움)
+    private: bool = False  # 명령을 쓴 사람에게만 보일지 (/도움, 게임 답·사회자 답 보기, 생일)
     later: list = field(default_factory=list)  # 하치와레 말 뒤에 할 일
+    always: bool = False  # 번역 설정과 상관없이 하치와레가 말할지 (게임)
+    info: str = ""  # 우사기 소리 아래 작은 글씨 안내 (게임 점수판 등)
+    components: list = field(default_factory=list)  # 버튼·선택칸
 
 
 def _said(key: str, later=None, **kw) -> Outcome:
@@ -175,21 +210,27 @@ def handle(interaction: dict) -> tuple[dict, list]:
         outcome = _refused(reason, actor, target, rank, command)
     else:
         outcome = RUN[command](actor=actor, target=target, rank=rank, roster=roster, guild_id=guild_id,
-                               interaction=interaction)
+                               interaction=interaction, args=args)
     log.info("우사기 명령 /%s (%s): %s", command, actor.name, reason or "완료")
     return _reply(outcome, place)
 
 
 def _reply(outcome: Outcome, place) -> tuple[dict, list]:
     hook_channel, thread, user_id = place
-    data = {"content": outcome.sound, "allowed_mentions": {"parse": []}}  # 멘션 알림은 보내지 않음
-    if not outcome.private and not hachiware.is_on(user_id):  # 이곳의 번역이 꺼져 있으면 우사기 소리만
+    content = outcome.sound + (f"\n{outcome.info}" if outcome.info else "")
+    data = {"content": content, "allowed_mentions": {"parse": []}}  # 멘션 알림은 보내지 않음
+    if outcome.components:
+        data["components"] = outcome.components
+    if not outcome.private and not outcome.always and not hachiware.is_on(user_id):  # 이곳의 번역이 꺼져 있으면 우사기 소리만
         return {"type": CHANNEL_MESSAGE, "data": data}, outcome.later
     hook = None if outcome.private else hachiware.hooks().get(hook_channel)
     if hook:  # 우사기 소리는 응답으로, 하치와레 말은 응답 뒤에 그 채널(스레드) 웹훅으로
         url = f"{hook}?thread_id={thread}" if thread else hook
         return {"type": CHANNEL_MESSAGE, "data": data}, [lambda: discord.execute_webhook(url, outcome.notice)] + outcome.later
-    data["content"] = f"{outcome.sound}\n>>> **하치와레** {outcome.notice}"
+    if outcome.info:  # 하치와레 말 한 줄 + 안내
+        data["content"] = f"{outcome.sound}\n> **하치와레** {outcome.notice}\n{outcome.info}"
+    else:
+        data["content"] = f"{outcome.sound}\n>>> **하치와레** {outcome.notice}"
     if outcome.private:
         data["flags"] = EPHEMERAL
     return {"type": CHANNEL_MESSAGE, "data": data}, outcome.later
@@ -357,6 +398,290 @@ def _recommend(meal_name: str):
     return run
 
 
+# ── 이미지 랜덤 주제 게임 (규칙은 lunchbot/game.py). 게임 안의 우사기 말은 번역 설정과 상관없이 하치와레가 번역 ──
+
+def _button(label: str, custom_id: str, style: int = 2) -> dict:
+    return {"type": BUTTON, "style": style, "label": label, "custom_id": custom_id}
+
+
+def _load_game(channel_id: str):
+    return storage.get_json(storage.game_key(channel_id))
+
+
+def _save_game(channel_id: str, g: dict) -> None:
+    storage.put_json(storage.game_key(channel_id), g)
+
+
+def _game_says(key: str, private: bool = False, **kw) -> Outcome:
+    script = hachiware.notice_script(key, **kw)
+    return Outcome(script.sound, hachiware.relay(script.text), private=private, always=True)
+
+
+def _game_refused(reason: str) -> Outcome:
+    return _game_says(f"game_{reason}", private=True)  # 안 되는 까닭은 누른 사람에게만
+
+
+def _pname(g: dict, user_id: str) -> str:
+    """게임 참가자의 보일 이름."""
+    return g["names"].get(user_id, user_id)
+
+
+def _setup_info(g: dict) -> str:
+    players = ", ".join(_pname(g, p) for p in g["players"]) or "아직 없어요"
+    return (f"-# 주제: **{g['topic']}** · 시작한 사람: {g['starter_name']}\n"
+            f"-# 참가자 ({len(g['players'])}명): {players}\n"
+            f"-# 시작한 사람이 참가자를 고르거나 '서버 전체'를 누른 뒤 '시작'을 눌러요 ({game.MIN_PLAYERS}명 이상).")
+
+
+def _setup_components() -> list:
+    pick = {"type": USER_SELECT, "custom_id": "game:pick", "placeholder": "참가자 고르기", "min_values": 1, "max_values": 25}
+    buttons = [_button("서버 전체", "game:all"), _button("시작", "game:start", 1), _button("취소", "game:cancel", 4)]
+    return [{"type": ROW, "components": [pick]}, {"type": ROW, "components": buttons}]
+
+
+def _round_info(g: dict) -> str:
+    done, total = game.progress(g)
+    return (f"-# **{g['round']}라운드** · 주제: **{g['topic']}**\n"
+            f"-# 술래: <@{g['it']}> · 사회자: <@{g['host']}>\n"
+            f"-# 술래를 뺀 사람은 `/게임 답 [내용]`으로 답을 보내요. 다른 사람에게는 안 보여요. 답 {done}/{total}")
+
+
+def _scoreboard(g: dict) -> str:
+    lines = ["-# 점수판"] + [f"-# {i}. {_pname(g, p)} {score}점" for i, (p, score) in enumerate(game.scoreboard(g), 1)]
+    return "\n".join(lines)
+
+
+def _winners(g: dict) -> str:
+    board = game.scoreboard(g)
+    top = board[0][1] if board else 0
+    return ", ".join(_pname(g, p) for p, score in board if score == top) or "없음"
+
+
+def _post(channel_id: str, script, info: str, mentions=(), components=None) -> str:
+    """우사기 소리 + 안내를 채널에 올리고, 하치와레가 그 소리를 번역합니다 (게임이라 늘). 메시지 id 를 돌려줍니다."""
+    hook = hachiware.hooks().get(str(channel_id))
+    text = hachiware.relay(script.text)
+    content = f"{script.sound}\n{info}" if hook else f"{script.sound}\n> **하치와레** {text}\n{info}"
+    payload = {"content": content, "allowed_mentions": {"parse": [], "users": list(mentions)}}
+    if components:
+        payload["components"] = components
+    sent = discord.send_message(config.DISCORD_BOT_TOKEN, channel_id, payload)
+    if hook:
+        discord.execute_webhook(hook, text)
+    return (sent or {}).get("id")
+
+
+def _post_round(channel_id: str) -> None:
+    g = _load_game(channel_id)
+    script = hachiware.notice_script("game_round", round=g["round"], it=_pname(g, g["it"]), host=_pname(g, g["host"]))
+    g["round_sound"], g["pinged"] = script.sound, False
+    reveal = [{"type": ROW, "components": [_button("답 보기 (사회자만)", "game:reveal")]}]
+    g["round_msg"] = _post(channel_id, script, _round_info(g), mentions=[g["it"], g["host"]], components=reveal)
+    _save_game(channel_id, g)
+
+
+def _post_final(channel_id: str) -> None:
+    g = _load_game(channel_id)
+    script = hachiware.notice_script("game_end", winner=_winners(g))
+    _post(channel_id, script, f"-# **게임 끝!** 주제: **{g['topic']}**\n{_scoreboard(g)}\n-# 1등: {_winners(g)}")
+
+
+def _after_answer(channel_id: str) -> None:
+    """라운드 메시지의 답 낸 수를 고치고, 다 모이면 사회자를 부릅니다."""
+    g = _load_game(channel_id)
+    if g.get("round_msg"):
+        reveal = [{"type": ROW, "components": [_button("답 보기 (사회자만)", "game:reveal")]}]
+        discord.edit_message(config.DISCORD_BOT_TOKEN, channel_id, g["round_msg"],
+                             {"content": f"{g['round_sound']}\n{_round_info(g)}", "components": reveal})
+    done, total = game.progress(g)
+    if done == total and not g.get("pinged"):
+        g["pinged"] = True
+        _save_game(channel_id, g)
+        script = hachiware.notice_script("game_all_in", host=_pname(g, g["host"]))
+        _post(channel_id, script, f"-# <@{g['host']}> 사회자님, 답이 다 모였어요. 라운드 메시지의 '답 보기'를 눌러 주세요.",
+              mentions=[g["host"]])
+
+
+def _channel(interaction: dict) -> str:
+    return str(interaction.get("channel_id") or (interaction.get("channel") or {}).get("id"))
+
+
+def _game_start(actor, interaction, args, **_) -> Outcome:
+    channel_id = _channel(interaction)
+    g = _load_game(channel_id)
+    if g and g["status"] != "done":
+        return _game_refused("already")
+    g = game.new(str(args["주제"]).strip()[:100], actor.id)
+    g["starter_name"] = actor.name
+    _save_game(channel_id, g)
+    out = _game_says("game_setup", topic=g["topic"])
+    out.info, out.components = _setup_info(g), _setup_components()
+    return out
+
+
+def _game_answer(actor, interaction, args, **_) -> Outcome:
+    channel_id = _channel(interaction)
+    g = _load_game(channel_id)
+    if not g:
+        return _game_refused("not_running")
+    text = str(args["내용"]).strip()[:200]
+    try:
+        game.answer(g, actor.id, text)
+    except game.GameError as e:
+        return _game_refused(str(e))
+    _save_game(channel_id, g)
+    out = _game_says("game_answered", private=True)  # 낸 사람에게만
+    out.info = f"-# 보낸 답: {text} (다시 보내면 바뀌어요)"
+    out.later = [lambda: _after_answer(channel_id)]
+    return out
+
+
+def _game_result(actor, interaction, args, **_) -> Outcome:
+    channel_id = _channel(interaction)
+    g = _load_game(channel_id)
+    if not g:
+        return _game_refused("not_running")
+    correct = int(args["맞힌수"])
+    try:
+        it = game.result(g, actor.id, correct, random)
+    except game.GameError as e:
+        return _game_refused(str(e))
+    _save_game(channel_id, g)
+    out = _game_says("game_score", it=_pname(g, it), n=correct)
+    out.info = _scoreboard(g)
+    out.later = [lambda: _post_round(channel_id) if g["status"] == "playing" else _post_final(channel_id)]
+    return out
+
+
+def _game_score(interaction, **_) -> Outcome:
+    g = _load_game(_channel(interaction))
+    if not g or g["status"] != "playing":
+        return _game_refused("not_running")
+    out = _game_says("game_scoreboard")
+    out.info = _scoreboard(g)
+    return out
+
+
+def _game_end(actor, interaction, **_) -> Outcome:
+    channel_id = _channel(interaction)
+    g = _load_game(channel_id)
+    if not g:
+        return _game_refused("not_running")
+    try:
+        game.end(g, actor.id, captain=actor.level >= members.CAPTAIN)
+    except game.GameError as e:
+        return _game_refused(str(e))
+    _save_game(channel_id, g)
+    out = _game_says("game_end", winner=_winners(g))
+    out.info = f"-# **게임 끝!** 주제: **{g['topic']}**\n{_scoreboard(g)}\n-# 1등: {_winners(g)}"
+    return out
+
+
+def handle_component(interaction: dict) -> tuple[dict, list]:
+    """게임(game:…)과 생일(bday:…) 버튼·선택칸. (디스코드에 돌려줄 응답, 응답 뒤에 할 일)."""
+    custom_id = interaction["data"]["custom_id"]
+    if custom_id == "bday:open":
+        return _birthday_modal(), []
+    place = _place(interaction)
+    member = interaction.get("member") or {}
+    user = member.get("user") or {}
+    uid = str(user.get("id"))
+    channel_id = _channel(interaction)
+    g = _load_game(channel_id)
+    action = custom_id.split(":", 1)[1]
+    if not g or g["status"] == "done":
+        return _reply(_game_refused("not_running"), place)
+    if action == "reveal":
+        try:
+            shown, missing = game.reveal(g, uid, random)
+        except game.GameError as e:
+            return _reply(_game_refused(str(e)), place)
+        out = _game_says("game_reveal", private=True)  # 사회자에게만
+        lines = [f"**{g['round']}라운드 답** (사회자만 보여요)"]
+        lines += [f"{i}. {text} — {_pname(g, who)}" for i, (text, who) in enumerate(shown, 1)] or ["아직 답이 없어요"]
+        if missing:
+            lines.append(f"-# 아직 안 낸 사람: {', '.join(_pname(g, p) for p in missing)}")
+        out.info = "\n".join(lines)
+        return _reply(out, place)
+    if g["status"] != "setup":
+        return _reply(_game_refused("not_running"), place)
+    if uid != g["starter"]:
+        return _reply(_game_refused("not_starter"), place)
+    later = []
+    if action == "pick":
+        resolved = interaction["data"].get("resolved") or {}
+        users, nicks = resolved.get("users") or {}, resolved.get("members") or {}
+        ids = [v for v in interaction["data"].get("values", []) if not (users.get(v) or {}).get("bot")]
+        game.set_players(g, ids, {v: _name(nicks.get(v, {}), users.get(v, {})) for v in ids})
+    elif action == "all":
+        people = discord.list_members(config.DISCORD_BOT_TOKEN, interaction["guild_id"])
+        game.set_players(g, [m["user"]["id"] for m in people], {m["user"]["id"]: _name(m, m["user"]) for m in people})
+    elif action == "start":
+        try:
+            game.start(g, uid, random)
+        except game.GameError as e:
+            return _reply(_game_refused(str(e)), place)
+        later = [lambda: _post_round(channel_id)]
+    elif action == "cancel":
+        g["status"] = "done"
+    _save_game(channel_id, g)
+    if action == "start":
+        content = f"{messages.picked_sound()}\n-# 게임 시작! 주제: **{g['topic']}** · 참가자 {len(g['players'])}명"
+        return {"type": UPDATE_MESSAGE, "data": {"content": content, "components": []}}, later
+    if action == "cancel":
+        return {"type": UPDATE_MESSAGE, "data": {"content": f"{messages.skipped_sound()}\n-# 게임을 취소했어요.",
+                                                 "components": []}}, []
+    content = f"{messages.picked_sound()}\n{_setup_info(g)}"
+    return {"type": UPDATE_MESSAGE, "data": {"content": content, "components": _setup_components()}}, []
+
+
+# ── 생일 (선택) ──
+
+BIRTHDAY_NOTE = "알려 주면 생일 아침 9시에 우사기 채널에서 축하해요"
+
+
+def _birthday_modal() -> dict:
+    def field_(custom_id, label, placeholder):
+        return {"type": ROW, "components": [{"type": TEXT_INPUT, "custom_id": custom_id, "label": label, "style": 1,
+                                             "min_length": 1, "max_length": 3, "required": True,
+                                             "placeholder": placeholder}]}
+
+    return {"type": MODAL, "data": {"custom_id": "bday:save", "title": "생일 알려 주기 (선택)", "components": [
+        field_("month", "생일 월 (1~12)", BIRTHDAY_NOTE), field_("day", "생일 일 (1~31)", "예: 5")]}}
+
+
+def _birthday_saved(guild_id: str, user, month: int, day: int) -> Outcome:
+    try:
+        birthdays.save(guild_id, user.id, month, day, by=user.name)
+    except ValueError:
+        return _game_says("bday_bad", private=True)
+    out = _game_says("bday_saved", private=True, date=f"{month}월 {day}일")  # 넣은 사람에게만
+    out.info = "-# 생일 아침 9시에 우사기 채널에서 축하 알림을 보내요. 지우려면 `/생일 지우기`."
+    return out
+
+
+def handle_modal(interaction: dict) -> tuple[dict, list]:
+    """생일 입력창(bday:save)."""
+    values = {c["custom_id"]: c.get("value", "") for row in interaction["data"].get("components", [])
+              for c in row.get("components", [])}
+    member = interaction.get("member") or {}
+    user = member.get("user") or {}
+    person = members.Person(str(user.get("id")), _name(member, user))
+    try:
+        month, day = birthdays.parse(values.get("month"), values.get("day"))
+    except ValueError:
+        return _reply(_game_says("bday_bad", private=True), _place(interaction))
+    return _reply(_birthday_saved(interaction["guild_id"], person, month, day), _place(interaction))
+
+
+def _birthday_set(actor, guild_id, args, **_) -> Outcome:
+    return _birthday_saved(guild_id, actor, int(args["월"]), int(args["일"]))
+
+
+def _birthday_remove(actor, guild_id, **_) -> Outcome:
+    return _game_says("bday_removed" if birthdays.remove(guild_id, actor.id) else "bday_none", private=True)
+
+
 RUN = {
     "도움": _help,
     "우사기": _usagi,
@@ -371,4 +696,11 @@ RUN = {
     "멤버강등": _set_rank,
     "멤버삭제": _remove,
     "추방": _kick,
+    "생일 등록": _birthday_set,
+    "생일 지우기": _birthday_remove,
+    "게임 시작": _game_start,
+    "게임 답": _game_answer,
+    "게임 결과": _game_result,
+    "게임 점수": _game_score,
+    "게임 끝": _game_end,
 }

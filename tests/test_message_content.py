@@ -33,3 +33,8 @@ def test_off_when_discord_cannot_be_asked():
 
     assert discord.can_read_messages("t", get=down) is False
     assert discord.can_read_messages("t", get=lambda path: {"id": "1"}) is False  # 플래그가 없으면 꺼진 것
+
+
+def test_can_read_members_for_welcomes():
+    assert discord.can_read_members("t", get=app(MEMBERS_LIMITED)[0]) is True  # SERVER MEMBERS INTENT
+    assert discord.can_read_members("t", get=app(CONTENT_LIMITED)[0]) is False

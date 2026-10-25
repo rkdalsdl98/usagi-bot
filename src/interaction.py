@@ -26,7 +26,7 @@ import commands
 log = logging.getLogger()
 log.setLevel(logging.INFO)
 
-PING, COMMAND, COMPONENT = 1, 2, 3
+PING, COMMAND, COMPONENT, MODAL_SUBMIT = 1, 2, 3, 5
 PONG, CHANNEL_MESSAGE, UPDATE_MESSAGE = 1, 4, 7
 EPHEMERAL = 64
 
@@ -218,7 +218,14 @@ def respond(event) -> tuple[dict, list]:
     if interaction["type"] == PING:
         return _response(200, {"type": PONG}), []
     if interaction["type"] == COMPONENT:
-        reply, later = handle_component(interaction)
+        custom_id = interaction["data"]["custom_id"]
+        if custom_id.startswith(("game:", "bday:")):  # 게임·생일 버튼은 commands.py
+            reply, later = commands.handle_component(interaction)
+        else:  # 투표 버튼
+            reply, later = handle_component(interaction)
+        return _response(200, reply), later
+    if interaction["type"] == MODAL_SUBMIT:  # 생일 입력창
+        reply, later = commands.handle_modal(interaction)
         return _response(200, reply), later
     if interaction["type"] == COMMAND:
         reply, later = commands.handle(interaction)

@@ -264,6 +264,22 @@ def unarchive_thread(bot_token: str, thread_id: str) -> None:
     _api_send(bot_token, "PATCH", f"/channels/{thread_id}", {"archived": False})
 
 
+def edit_message(bot_token: str, channel_id: str, message_id: str, payload: dict) -> dict:
+    """봇이 보낸 메시지 고치기 (게임 라운드 메시지의 답 낸 수)."""
+    return _api_send(bot_token, "PATCH", f"/channels/{channel_id}/messages/{message_id}", payload)
+
+
+def list_members(bot_token: str, guild_id: str) -> list:
+    """서버의 사람들 (봇 빼고). SERVER MEMBERS INTENT 가 있어야 읽힙니다."""
+    people, after = [], "0"
+    while True:
+        page = _api_get(bot_token, f"/guilds/{guild_id}/members?limit=1000&after={after}")
+        people += [m for m in page if not m["user"].get("bot")]
+        if len(page) < 1000:
+            return people
+        after = page[-1]["user"]["id"]
+
+
 def guild_roles(bot_token: str, guild_id: str) -> list:
     return _api_get(bot_token, f"/guilds/{guild_id}/roles")
 
@@ -308,6 +324,18 @@ def _api_get(bot_token: str, path: str):
 
 # 앱 플래그의 채팅 내용 읽기 권한: 인증된 봇은 GATEWAY_MESSAGE_CONTENT, 서버 100개 미만은 _LIMITED
 MESSAGE_CONTENT_FLAGS = 1 << 18 | 1 << 19
+
+
+MEMBERS_FLAGS = 1 << 14 | 1 << 15  # SERVER MEMBERS INTENT (인증된 봇 / _LIMITED)
+
+
+def can_read_members(bot_token: str, get=None) -> bool:
+    """개발자 포털 Bot 탭의 SERVER MEMBERS INTENT 가 켜져 있는지 (새로 들어온 사람 환영에 필요)."""
+    get = get or (lambda path: _api_get(bot_token, path))
+    try:
+        return bool(int(get("/applications/@me").get("flags", 0)) & MEMBERS_FLAGS)
+    except (OSError, ValueError):
+        return False
 
 
 def can_read_messages(bot_token: str, get=None) -> bool:
