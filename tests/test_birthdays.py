@@ -44,3 +44,12 @@ def test_parse_month_day():
     assert birthdays.parse(" 03 ", "05월") == (3, 5)
     with pytest.raises(ValueError):
         birthdays.parse("삼", "5")
+
+
+def test_marking_a_day_does_not_rewrite_the_birthday_list(aws):
+    # 축하 기록은 우사기 봇이, 생일 목록은 버튼 서버가 쓴다. 다른 프로세스라 같은 파일을 쓰면 한쪽이 덮어쓸 수 있다
+    birthdays.save("g1", "u1", 3, 5, by="x")
+    before = storage.get_json(storage.birthdays_key("g1"))
+    assert birthdays.mark_sent("g1", date(2026, 3, 5)) is True
+    assert storage.get_json(storage.birthdays_key("g1")) == before
+    assert birthdays.mark_sent("g1", date(2026, 3, 5)) is False

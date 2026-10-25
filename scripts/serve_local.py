@@ -3,6 +3,8 @@
 run_local.py 와 같은 로컬 폴더(기본 .local-s3/)에서 추천 기록을 찾고 선택 기록을 저장하므로,
 run_local.py 로 보낸 메시지의 버튼을 처리할 수 있습니다.
 우사기 명령은 응답(우사기 소리)부터 보내고, 그 뒤에 하치와레 말과 명령으로 부른 추천을 따로 처리합니다.
+입력과 응답 뒤에 할 일은 들어온 순서대로 줄(lunchbot/inbox.py)에 넣어 하나씩 처리합니다. 거의 같은 순간에 온
+두 입력(예: 게임 답 둘)이 같은 파일을 함께 고쳐 써서 한쪽이 사라지지 않게 하기 위해서입니다.
 디스코드가 이 서버에 닿으려면 공개 HTTPS 주소가 필요합니다. 다른 터미널에서 터널을 띄우고
 그 주소를 개발자 포털의 Interactions Endpoint URL 에 넣습니다.
 
@@ -45,7 +47,9 @@ except ValueError:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
 local_storage.install()
 import interaction  # noqa: E402
-from lunchbot import hachiware  # noqa: E402
+from lunchbot import hachiware, inbox  # noqa: E402
+
+line = inbox.Inbox()  # 들어온 순서대로 하나씩
 
 # 하치와레 웹훅이 어느 채널 것인지 미리 읽어 둡니다 (첫 명령의 응답이 늦지 않게)
 _hooks = hachiware.hooks()
@@ -59,7 +63,7 @@ class Handler(BaseHTTPRequestHandler):
         event = {"headers": dict(self.headers.items()), "body": body, "isBase64Encoded": False}
         later = []
         try:
-            res, later = interaction.respond(event)
+            res, later = line.ask(interaction.respond, event)
         except Exception:
             traceback.print_exc()
             res = {"statusCode": 500, "headers": {"Content-Type": "application/json"}, "body": "{}"}
@@ -70,7 +74,7 @@ class Handler(BaseHTTPRequestHandler):
     @staticmethod
     def _after(later):
         time.sleep(AFTER_S)
-        interaction.run_later(later)
+        line.after(later, interaction.run_later)  # 줄의 차례대로 (오래 걸리는 추천만 줄 밖에서)
 
     def do_GET(self):
         # 터널이 이 서버에 닿는지 브라우저로 확인할 때 씁니다.

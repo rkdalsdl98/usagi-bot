@@ -86,7 +86,11 @@ def roles_key(guild_id: str) -> str:
 
 
 def birthdays_key(guild_id: str) -> str:
-    return f"birthdays/{guild_id}.json"  # 생일 (선택): 사람마다 월·일, 마지막으로 축하한 날
+    return f"birthdays/{guild_id}.json"  # 생일 (선택): 사람마다 월·일 (버튼 서버가 씀)
+
+
+def birthdays_sent_key(guild_id: str) -> str:
+    return f"birthdays/{guild_id}-sent.json"  # 마지막으로 축하한 날 (우사기 봇이 씀, 생일 목록과 따로)
 
 
 def game_key(channel_id: str) -> str:

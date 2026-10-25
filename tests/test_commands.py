@@ -11,7 +11,7 @@ import urllib.error
 
 import pytest
 
-from lunchbot import config, hachiware, members, messages, storage
+from lunchbot import config, hachiware, inbox, members, messages, storage
 import commands
 import interaction
 import recommend
@@ -289,6 +289,7 @@ def test_hachiware_speaks_after_usagi(bot):
     # 하치와레 말과 추천은 우사기 답을 돌려준 뒤에 한다 (식당 수집은 3초를 넘길 수 있음)
     response, later = interaction.respond(signed_event(slash("점심 추천", "x")))
     assert "flags" not in json.loads(response["body"])["data"] and bot.sent == [] and bot.hooked == []
+    assert [inbox.is_slow(job) for job in later] == [False, True]  # 추천은 오래 걸릴 수 있어 줄 밖에서
     for job in later:
         job()
     assert bot.sent == ["42"] and len(bot.hooked) == 1 and "<#42>" in bot.hooked[0][1]

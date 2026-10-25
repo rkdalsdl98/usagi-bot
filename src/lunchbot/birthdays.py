@@ -2,6 +2,8 @@
 
 새로 들어온 사람에게 우사기 채널에서 입력을 권하고(버튼 → 입력창), /생일 등록·지우기로 언제든 바꿉니다.
 2월 29일 생일은 윤년이 아니면 2월 28일에 축하합니다. 서버마다 birthdays/{서버 id}.json 에 저장합니다.
+마지막으로 축하한 날은 우사기 봇이 따로(birthdays/{서버 id}-sent.json) 적습니다. 생일 목록은 버튼 서버가 쓰므로,
+같은 파일을 두 프로세스가 고쳐 쓰다 한쪽이 사라지지 않게 나눴습니다.
 """
 import calendar
 import re
@@ -13,7 +15,7 @@ LEAP_YEAR = 2024  # 2월 29일도 받도록 윤년 기준으로 날짜를 확인
 
 
 def _load(guild_id: str) -> dict:
-    return storage.get_json(storage.birthdays_key(guild_id)) or {"people": {}, "sent": None}
+    return storage.get_json(storage.birthdays_key(guild_id)) or {"people": {}}
 
 
 def parse(month: str, day: str) -> tuple[int, int]:
@@ -61,9 +63,8 @@ def today(guild_id: str, day: date) -> list:
 
 def mark_sent(guild_id: str, day: date) -> bool:
     """그날 축하를 했다고 적어 둡니다. 이미 했으면 False (봇을 다시 띄워도 한 번만)."""
-    data = _load(guild_id)
-    if data.get("sent") == day.isoformat():
+    key = storage.birthdays_sent_key(guild_id)
+    if (storage.get_json(key) or {}).get("sent") == day.isoformat():
         return False
-    data["sent"] = day.isoformat()
-    storage.put_json(storage.birthdays_key(guild_id), data)
+    storage.put_json(key, {"sent": day.isoformat()})
     return True

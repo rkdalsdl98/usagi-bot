@@ -273,7 +273,8 @@ EventBridge Scheduler (점심 11:30 매일 / 저녁 18:00 평일, Asia/Seoul)
 | `members/{서버 id}.json` | 갑옷씨 멤버와 등급 ([우사기 명령](#우사기-명령)) |
 | `roles/{서버 id}.json` | 갑옷씨 등급마다 디스코드 역할 id ([갑옷씨 역할](#갑옷씨-역할)) |
 | `threads/{서버 id}.json` | `/우사기` 1:1 비공개 스레드 (사람마다 스레드 id) |
-| `birthdays/{서버 id}.json` | 생일 (사람마다 월·일)과 마지막으로 축하한 날 ([생일 알림](#생일-알림)) |
+| `birthdays/{서버 id}.json` | 생일 (사람마다 월·일) ([생일 알림](#생일-알림)) |
+| `birthdays/{서버 id}-sent.json` | 마지막으로 생일을 축하한 날 (우사기 봇이 씀. 생일 목록과 같은 파일을 두 서버가 고쳐 쓰지 않게 따로 둠) |
 | `games/{채널 id}.json` | 이미지 랜덤 주제 게임 상태 (참가자, 라운드, 술래·사회자, 이번 라운드 답, 점수) |
 | `settings/hachiware.json` | 하치와레 번역 서버 전체 설정 (모두가 보는 채널, 개인 설정을 안 정한 사람의 1:1 스레드). 없으면 꺼짐 |
 | `settings/hachiware_people.json` | 하치와레 번역 개인 설정 (사람마다 1:1 스레드 켜짐/꺼짐) |
@@ -388,6 +389,7 @@ docker compose up -d
 3. 우사기 채널에 아무 채팅이나 보내면 우사기 봇이 답합니다. 채팅 내용에 맞춰 답하게 하려면 개발자 포털 Bot 탭의 **MESSAGE CONTENT INTENT**를 켜고 `docker compose restart usagi`를 실행합니다 ([우사기 채널](#우사기-채널)).
 
 - 표와 결과는 `.local-s3/votes/`에, 정해진 식당은 `.local-s3/latest/`(저녁은 `.local-s3/dinner/latest/`)에 저장됩니다. 컨테이너와 호스트가 같은 `.local-s3/`를 씁니다.
+- `interaction` 서버는 버튼·명령·입력창을 **들어온 순서대로 줄(큐)에 넣어 하나씩** 처리합니다. 여럿이 같은 순간에 `/게임 답`이나 멤버 명령을 보내도 서로 덮어쓰지 않습니다. 명령으로 부른 메뉴 추천만 오래 걸릴 수 있어서 줄 밖에서 따로 돌립니다 (그동안 들어온 입력이 디스코드의 3초 제한을 넘기지 않게).
 - 임시 터널 주소는 `tunnel` 컨테이너를 다시 띄울 때마다 바뀝니다. 바뀌면 포털에도 다시 저장해야 합니다.
 - 로그는 `docker compose logs -f interaction usagi`, 끄는 건 `docker compose down`입니다. 서버를 끈 채로 포털 주소를 두면 디스코드의 정기 검사가 실패해 주소가 지워지고 알림이 옵니다.
 - 도커 없이 띄우려면: `uv run --python 3.12 --with pynacl==1.5.0 --with boto3 scripts/serve_local.py`, `cloudflared tunnel --url http://127.0.0.1:8787`, `uv run --python 3.12 --with discord.py==2.4.0 --with boto3 scripts/usagi_bot.py`를 각각 실행합니다.

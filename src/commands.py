@@ -32,7 +32,7 @@ import random
 import urllib.error
 from dataclasses import dataclass, field
 
-from lunchbot import birthdays, config, discord, game, hachiware, meals, members, messages, roles, storage
+from lunchbot import birthdays, config, discord, game, hachiware, inbox, meals, members, messages, roles, storage
 import recommend
 
 log = logging.getLogger()
@@ -393,7 +393,7 @@ def _recommend(meal_name: str):
                     discord.followup(app, token, f"{failed.sound}\n>>> **하치와레** {hachiware.relay(failed.text)}",
                                      ephemeral=False)
 
-        return _said("recommend", later=[send], channel=f"<#{meal.channel_id}>", meal=what)
+        return _said("recommend", later=[inbox.slow(send)], channel=f"<#{meal.channel_id}>", meal=what)
 
     return run
 
@@ -471,8 +471,11 @@ def _post(channel_id: str, script, info: str, mentions=(), components=None) -> s
     return (sent or {}).get("id")
 
 
-def _post_round(channel_id: str) -> None:
+def _post_round(channel_id: str, round_no: int) -> None:
+    """그 라운드 메시지를 올립니다. 응답 뒤라 그 사이에 게임이 끝났거나 라운드가 넘어갔으면 올리지 않습니다."""
     g = _load_game(channel_id)
+    if not g or g["status"] != "playing" or g["round"] != round_no:
+        return
     script = hachiware.notice_script("game_round", round=g["round"], it=_pname(g, g["it"]), host=_pname(g, g["host"]))
     g["round_sound"], g["pinged"] = script.sound, False
     reveal = [{"type": ROW, "components": [_button("답 보기 (사회자만)", "game:reveal")]}]
@@ -480,8 +483,8 @@ def _post_round(channel_id: str) -> None:
     _save_game(channel_id, g)
 
 
-def _post_final(channel_id: str) -> None:
-    g = _load_game(channel_id)
+def _post_final(channel_id: str, g: dict) -> None:
+    """끝난 게임 g 의 점수판 (응답 뒤라 그 사이에 새 게임이 시작됐을 수 있어서 저장된 것을 다시 읽지 않음)."""
     script = hachiware.notice_script("game_end", winner=_winners(g))
     _post(channel_id, script, f"-# **게임 끝!** 주제: **{g['topic']}**\n{_scoreboard(g)}\n-# 1등: {_winners(g)}")
 
@@ -549,7 +552,7 @@ def _game_result(actor, interaction, args, **_) -> Outcome:
     _save_game(channel_id, g)
     out = _game_says("game_score", it=_pname(g, it), n=correct)
     out.info = _scoreboard(g)
-    out.later = [lambda: _post_round(channel_id) if g["status"] == "playing" else _post_final(channel_id)]
+    out.later = [lambda: _post_round(channel_id, g["round"]) if g["status"] == "playing" else _post_final(channel_id, g)]
     return out
 
 
@@ -621,7 +624,7 @@ def handle_component(interaction: dict) -> tuple[dict, list]:
             game.start(g, uid, random)
         except game.GameError as e:
             return _reply(_game_refused(str(e)), place)
-        later = [lambda: _post_round(channel_id)]
+        later = [lambda: _post_round(channel_id, g["round"])]
     elif action == "cancel":
         g["status"] = "done"
     _save_game(channel_id, g)

@@ -197,3 +197,43 @@ def test_birthday_greeting_is_a_fixed_pair():
     s1, s2 = hachiware.birthday_script(), hachiware.birthday_script()
     assert s1 == s2 and len(s1.sound.split()) == len(s1.parts) >= 2 and "생일" in s1.text
     assert members.NEEDS["생일 등록"] == members.NEEDS["게임 시작"] == 0
+
+
+def answer_all(table):
+    for p in game.answerers(state()):
+        table["run"](cmd("게임 답", p, 내용="생각"))
+
+
+def respond(event):
+    """로컬 버튼 서버처럼 응답만 먼저 하고, 응답 뒤 할 일은 돌려받음 (그 사이에 다른 입력이 올 수 있음)."""
+    response, later = interaction.respond(signed_event(event))
+    return json.loads(response["body"]), later
+
+
+def test_next_round_is_not_posted_when_the_game_ended_in_between(table):
+    run = table["run"]
+    run(cmd("게임 시작", "own", 주제="첫인상"))
+    run(click("game:pick", "own", values=["own", "a", "b", "c"]))
+    run(click("game:start", "own"))
+    answer_all(table)
+    _, later = respond(cmd("게임 결과", state()["host"], 맞힌수=1))
+    run(cmd("게임 끝", "own"))  # 다음 라운드 메시지가 올라가기 전에 끝냄
+    posted = len(table["posted"])
+    interaction.run_later(later)
+    assert len(table["posted"]) == posted  # 끝난 게임의 라운드는 올리지 않음
+
+
+def test_final_board_is_of_the_finished_game_even_if_a_new_one_started(table):
+    run = table["run"]
+    run(cmd("게임 시작", "own", 주제="첫인상"))
+    run(click("game:pick", "own", values=["own", "a", "b"]))
+    run(click("game:start", "own"))
+    for _ in range(2):
+        answer_all(table)
+        run(cmd("게임 결과", state()["host"], 맞힌수=1))
+    answer_all(table)
+    _, later = respond(cmd("게임 결과", state()["host"], 맞힌수=1))  # 마지막 라운드
+    run(cmd("게임 시작", "a", 주제="두번째"))  # 최종 점수판이 올라가기 전에 새 게임
+    interaction.run_later(later)
+    final = table["posted"][-1][1]["content"]
+    assert "게임 끝" in final and "첫인상" in final and "두번째" not in final
