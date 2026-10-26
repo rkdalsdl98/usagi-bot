@@ -1,6 +1,7 @@
 import os
 import sys
 
+import pytest
 from nacl.signing import SigningKey
 
 SIGNING_KEY = SigningKey.generate()
@@ -18,3 +19,14 @@ os.environ.update(
     }
 )
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+
+@pytest.fixture
+def vault_tmp(tmp_path, monkeypatch):
+    """1:1 기억의 마스터 키를 테스트 폴더에 둡니다 (사용자 홈의 진짜 키를 건드리지 않게)."""
+    from lunchbot import config, vault
+
+    monkeypatch.setattr(config, "VAULT_PATH", str(tmp_path / "vault" / "master.key"))
+    vault._cache.clear()
+    yield
+    vault._cache.clear()

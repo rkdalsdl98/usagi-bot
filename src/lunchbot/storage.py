@@ -144,3 +144,23 @@ def list_json(prefix: str) -> list:
     for page in _client().get_paginator("list_objects_v2").paginate(Bucket=config.BUCKET_NAME, Prefix=prefix):
         keys += [o["Key"] for o in page.get("Contents", [])]
     return [get_json(k) for k in sorted(keys)]
+
+
+def list_keys(prefix: str) -> list:
+    """접두어 아래의 키 이름들 (정렬). 1:1 기억 파일처럼 이름만 보면 될 때 씁니다."""
+    keys = []
+    for page in _client().get_paginator("list_objects_v2").paginate(Bucket=config.BUCKET_NAME, Prefix=prefix):
+        keys += [o["Key"] for o in page.get("Contents", [])]
+    return sorted(keys)
+
+
+def delete(key: str) -> bool:
+    """지웁니다. 없었으면 False."""
+    try:
+        _client().head_object(Bucket=config.BUCKET_NAME, Key=key)
+    except ClientError as e:
+        if e.response["Error"]["Code"] in ("NoSuchKey", "404"):
+            return False
+        raise
+    _client().delete_object(Bucket=config.BUCKET_NAME, Key=key)
+    return True

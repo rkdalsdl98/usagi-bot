@@ -46,6 +46,18 @@ def list_json(prefix) -> list:
     return [json.loads(p.read_text(encoding="utf-8")) for p in sorted(base.glob("*.json"))]
 
 
+def list_keys(prefix) -> list:
+    return sorted(p.relative_to(LOCAL_DIR).as_posix() for p in LOCAL_DIR.glob(f"{prefix}*") if p.is_file())
+
+
+def delete(key) -> bool:
+    path = LOCAL_DIR / key
+    if not path.is_file():
+        return False
+    path.unlink()
+    return True
+
+
 def install():
     """src 를 import 경로에 넣고 lunchbot.storage 가 로컬 폴더를 읽고 쓰게 바꿉니다.
 
@@ -58,3 +70,5 @@ def install():
     storage.put_json = put_json
     storage.put_json_if_absent = put_json_if_absent
     storage.list_json = list_json
+    storage.list_keys = list_keys
+    storage.delete = delete

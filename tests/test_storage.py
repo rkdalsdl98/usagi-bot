@@ -40,3 +40,24 @@ def test_create_only_once_and_list_by_prefix(backend, request):
     st.put_json("votes/m2/ballots/u3.json", {"choice": "z"})
     assert sorted(b["choice"] for b in st.list_json("votes/m1/ballots/")) == ["x", "y"]
     assert st.list_json("votes/none/") == []
+
+
+@pytest.mark.parametrize("backend", ["s3", "local"])
+def test_delete_and_list_keys(backend, request):
+    # 1:1 기억 파일을 지우고(나간 사람, /기억 지우기), 해시 이름 파일 목록을 본다(나간 사람 찾기)
+    st = request.getfixturevalue(backend)
+    st.put_json("memories/g/b.json", {})
+    st.put_json("memories/g/a.json", {})
+    st.put_json("memories/h/c.json", {})
+    assert st.list_keys("memories/g/") == ["memories/g/a.json", "memories/g/b.json"]
+    assert st.list_keys("memories/none/") == []
+    assert st.delete("memories/g/a.json") is True and st.get_json("memories/g/a.json") is None
+    assert st.delete("memories/g/a.json") is False
+    assert st.list_keys("memories/g/") == ["memories/g/b.json"]
+
+
+def test_install_swaps_delete_and_list_keys(monkeypatch):
+    for name in ("get_json", "put_json", "put_json_if_absent", "list_json", "delete", "list_keys"):
+        monkeypatch.setattr(storage, name, getattr(storage, name))  # 테스트가 끝나면 되돌림
+    local_storage.install()
+    assert storage.delete is local_storage.delete and storage.list_keys is local_storage.list_keys
