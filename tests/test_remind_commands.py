@@ -83,6 +83,7 @@ def test_group_remind_is_announced_by_hachiware(team):
     assert "회의실 이동" in said[0]  # 하치와레 말에도 내용
     [line] = [x for x in body["data"]["content"].split("\n") if "회의실 이동" in x]
     assert not line.startswith("-#") and "10월 26일 오후 5시 0분" in line  # 작은 글씨가 아니라 모두가 잘 보이게
+    assert line.startswith("**전체 리마인드**")  # 이모티콘 없이
     [item] = reminders.everyone(GUILD)
     assert (item["channel"], item["thread"], item["user"]) == ("c-usagi", None, "work")
 
