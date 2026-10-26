@@ -73,3 +73,12 @@ def test_master_created_once_even_when_racing(tmp_path):
     for t in threads:
         t.join()
     assert len(keys) == 8 and len(set(keys)) == 1 and len(keys[0]) == 32
+
+
+def test_tests_never_use_the_real_vault():
+    # 어떤 테스트도 사용자 홈의 진짜 키 자리(~/.lunchbot-vault)를 만들거나 읽지 않는다
+    from pathlib import Path
+
+    from lunchbot import config
+
+    assert not config.VAULT_PATH.startswith(str(Path.home() / ".lunchbot-vault"))
