@@ -174,6 +174,7 @@ class Outcome:
     always: bool = False  # 번역 설정과 상관없이 하치와레가 말할지 (게임)
     info: str = ""  # 우사기 소리 아래 작은 글씨 안내 (게임 점수판 등)
     components: list = field(default_factory=list)  # 버튼·선택칸
+    direct: bool = False  # 우사기 소리를 옮기지 않고 하치와레가 바로 말함 (리마인드 등록, 번역 설정과 상관없이)
 
 
 def _said(key: str, later=None, **kw) -> Outcome:
@@ -250,7 +251,24 @@ def handle(interaction: dict) -> tuple[dict, list]:
     return _reply(outcome, place)
 
 
+def _direct(outcome: Outcome, place) -> tuple[dict, list]:
+    """하치와레가 바로 말함 (우사기 소리 없이). 모두가 보는 곳이면 그 채널 웹훅으로 하치와레가 올리고 쓴 사람에게는 확인만."""
+    hook_channel, thread, _ = place
+    text = outcome.notice + (f"\n{outcome.info}" if outcome.info else "")
+    hook = None if outcome.private else hachiware.hooks().get(hook_channel)
+    if hook:
+        url = f"{hook}?thread_id={thread}" if thread else hook
+        ack = {"content": "-# 하치와레가 이곳에 알렸어요.", "flags": EPHEMERAL, "allowed_mentions": {"parse": []}}
+        return {"type": CHANNEL_MESSAGE, "data": ack}, [lambda: discord.execute_webhook(url, text)] + outcome.later
+    data = {"content": f">>> **하치와레** {text}", "allowed_mentions": {"parse": []}}
+    if outcome.private:
+        data["flags"] = EPHEMERAL
+    return {"type": CHANNEL_MESSAGE, "data": data}, outcome.later
+
+
 def _reply(outcome: Outcome, place) -> tuple[dict, list]:
+    if outcome.direct:
+        return _direct(outcome, place)
     hook_channel, thread, user_id = place
     content = outcome.sound + (f"\n{outcome.info}" if outcome.info else "")
     data = {"content": content, "allowed_mentions": {"parse": []}}  # 멘션 알림은 보내지 않음
@@ -441,9 +459,9 @@ def _remind_add(actor, guild_id, args, **_) -> Outcome:
     except urllib.error.HTTPError as e:
         log.warning("/리마인드 스레드 실패: HTTP %s", e.code)
         return _game_says("thread_failed", private=True)
-    out = _game_says("remind_saved", private=True, date=reminders._clock(at))
-    out.info = f"-# {reminders._clock(at)}에 <#{tid}> 에서 하치와레가 불러 알려 줄게요. 지우려면 `/리마인드취소`."
-    return out
+    item_text = " ".join(str(args["내용"]).split())[:reminders.TEXT_CHARS]
+    return Outcome("", f"{reminders._clock(at)}에 <#{tid}> 에서 불러서 알려 줄게! 알릴 거: \"{item_text}\"",
+                   private=True, info="-# 지우려면 `/리마인드취소`, 목록은 `/리마인드목록`.", direct=True)
 
 
 def _remind_list(actor, guild_id, **_) -> Outcome:
@@ -469,11 +487,10 @@ def _remind_all_add(actor, guild_id, args, interaction, **_) -> Outcome:
         item = reminders.add_all(guild_id, actor.id, actor.name, hook_channel, thread, args.get("내용", ""), at, now)
     except reminders.RemindError as e:
         return _game_says(f"remind_{e}", private=True, n=reminders.LIMIT)
-    out = _game_says("remind_all_saved", date=reminders._clock(at))
-    out.notice = f"{out.notice} 알릴 거: \"{item['text']}\""  # 하치와레 말에도 내용
-    out.info = (f"**전체 리마인드** {reminders._clock(at)} — \"{item['text']}\" ({actor.name} 님이 걸어 둠)\n"
-                "-# 그 시각에 이곳에서 하치와레가 모두를 불러요. 목록은 `/전체리마인드목록`.")  # 모두가 잘 보이게 보통 글로
-    return out
+    clock = reminders._clock(at)
+    return Outcome("", "다들! 전체 리마인드를 걸어 뒀어. 그 시각에 여기서 다 같이 불러서 알려 줄게!",
+                   info=(f"**전체 리마인드** {clock} — \"{item['text']}\" ({actor.name} 님이 걸어 둠)\n"
+                         "-# 목록은 `/전체리마인드목록`"), direct=True)  # 모두가 잘 보이게 보통 글로
 
 
 def _remind_all_list(guild_id, **_) -> Outcome:

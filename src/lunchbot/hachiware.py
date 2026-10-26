@@ -348,7 +348,6 @@ NOTICES = {
     "memory_bad_number": [[("puzzled", "응?"), ("sulky", "그런 번호는 없어…")]],
     "memory_locked": [[("puzzled", "응?"), ("sulky", "기억 상자를 열 수 없어…")]],
     # /리마인드 (나만 보기)
-    "remind_saved": [[("excited", "{date}!"), ("happy", "그때 알려 줄게~")]],
     "remind_past": [[("puzzled", "응?"), ("sulky", "이미 지난 시각이야…")]],
     "remind_bad_date": [[("puzzled", "응?"), ("sulky", "그런 날짜는 없어…")]],
     "remind_empty": [[("puzzled", "응?"), ("sulky", "뭘 알려 줄까…?")]],
@@ -358,7 +357,6 @@ NOTICES = {
     "remind_cancelled": [[("happy", "{n}번!"), ("sulky", "지웠어…")]],
     "remind_bad_number": [[("puzzled", "응?"), ("sulky", "그런 번호는 없어…")]],
     "remind_locked": [[("puzzled", "응?"), ("sulky", "알림 상자를 열 수 없어…")]],
-    "remind_all_saved": [[("excited", "{date}!"), ("happy", "다 같이 알려 줄게~")]],
     "remind_not_yours": [[("puzzled", "응?"), ("sulky", "건 사람이나 대장만 지울 수 있어…")]],
     "usagi_thread": [[("excited", "{thread}!"), ("happy", "거기서 기다릴게~")],
                      [("happy", "둘이서 놀자~"), ("excited", "{thread}로 와!")]],

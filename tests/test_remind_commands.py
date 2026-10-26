@@ -37,6 +37,7 @@ def test_remind_saves_privately_and_opens_my_thread(team):
     body = call("리마인드", "work", 내용="비밀 회의", 시간=16, 분=30)
     content = body["data"]["content"]
     assert body["data"]["flags"] == 64 and "10월 26일 오후 4시 30분" in content and "<#t1>" in content
+    assert content.startswith(">>> **하치와레** ") and "래" not in content.split("\n")[0]  # 우사기 소리·번역 없이 하치와레가 바로
     assert len(team.hooked) == n  # 나만 보기: 채널에 하치와레 말이 안 감
     assert team.threads["made"] and team.threads["added"][-1] == ("t1", "work")  # 1:1 스레드가 없으면 만듦
     [item] = reminders.mine(GUILD, "work")
@@ -78,12 +79,11 @@ def test_group_remind_is_announced_by_hachiware(team):
 
     hachiware.turn(False, "테스트")  # 번역이 꺼져 있어도 하치와레가 알림
     body, said = group(team, "work", 내용="회의실 이동", 시간=17, 분=0)
-    assert "flags" not in body["data"]  # 모두가 봄
-    assert said and "10월 26일 오후 5시 0분" in said[0] and "다 같이" in said[0]
-    assert "회의실 이동" in said[0]  # 하치와레 말에도 내용
-    [line] = [x for x in body["data"]["content"].split("\n") if "회의실 이동" in x]
-    assert not line.startswith("-#") and "10월 26일 오후 5시 0분" in line  # 작은 글씨가 아니라 모두가 잘 보이게
-    assert line.startswith("**전체 리마인드**")  # 이모티콘 없이
+    assert body["data"]["flags"] == 64  # 우사기는 채널에 말하지 않음 (건 사람에게만 확인)
+    [announce] = said  # 하치와레가 그 채널에 바로 (번역이 아니라)
+    assert "10월 26일 오후 5시 0분" in announce and "다 같이" in announce and "래!" not in announce
+    [line] = [x for x in announce.split("\n") if "회의실 이동" in x]
+    assert line.startswith("**전체 리마인드**") and "10월 26일 오후 5시 0분" in line  # 보통 글씨, 이모티콘 없이
     [item] = reminders.everyone(GUILD)
     assert (item["channel"], item["thread"], item["user"]) == ("c-usagi", None, "work")
 
@@ -106,3 +106,13 @@ def test_group_remind_cancel_by_maker_or_captain(team):
     assert [r["text"] for r in reminders.everyone(GUILD)] == ["둘째"]
     call("전체리마인드취소", "own", 번호=1)  # 서버 주인은 대장 갑옷씨
     assert reminders.everyone(GUILD) == []
+
+
+def test_group_remind_where_hachiware_has_no_webhook(team):
+    event = slash("전체리마인드", "work", channel="c-plain")
+    event["data"]["options"] = [{"type": 3, "name": "내용", "value": "회의실 이동"}, {"type": 4, "name": "시간", "value": 17},
+                                {"type": 4, "name": "분", "value": 0}]
+    body = json.loads(interaction.handler(signed_event(event), None)["body"])
+    content = body["data"]["content"]
+    assert "flags" not in body["data"] and content.startswith(">>> **하치와레** ")  # 모두가 보는 하치와레 말로
+    assert "**전체 리마인드** 10월 26일 오후 5시 0분" in content
