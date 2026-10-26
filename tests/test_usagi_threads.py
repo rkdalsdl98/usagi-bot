@@ -23,6 +23,7 @@ from lunchbot import storage  # noqa: E402
 from test_flow import aws  # noqa: E402,F401 (aws 는 fixture)
 
 HOOK = "https://discord.com/api/webhooks/1/hachiware-token"
+REAL_SLEEP = asyncio.sleep
 SECRET = "비밀스러운 이야기"
 
 
@@ -152,3 +153,31 @@ def test_guide_is_marked_seen_only_after_it_arrives(world, monkeypatch):
     run(Message("안녕", Channel("tb", parent_id="555"), Author("b", "현우")))
     assert not memory.load("g", "b")["noticed"]  # 안내가 안 닿았으니 기록 시작 안 함
     assert bot.hachiware_url == ""  # 그 뒤로는 번역이 꺼진 것으로 봄 (모르게 기록하지 않게)
+
+
+def test_two_people_in_one_thread_are_never_mixed(world, monkeypatch):
+    # 스레드 주인 a 와 스레드를 볼 수 있는 관리자 b 가 거의 같이 채팅해도 한 덩어리로 모으지 않는다
+    from lunchbot import birthdays, memory
+
+    async def yield_only(*a, **k):
+        await REAL_SLEEP(0)
+
+    monkeypatch.setattr(bot.asyncio, "sleep", yield_only)
+    monkeypatch.setattr(bot.config, "USAGI_CHANNEL_ID", "555")
+    storage.put_json(storage.members_key("g"), {"members": {"a": {"rank": 2}, "b": {"rank": 2}}})
+    mem = memory.new()
+    mem["noticed"] = "2026-10-26"
+    memory.save("g", "a", mem)
+    birthdays.save("g", "a", 3, 5, by="x")
+    birthdays.save("g", "b", 12, 24, by="x")
+    thread = Channel("ta", parent_id="555")
+
+    async def together(*messages):
+        await asyncio.gather(*(bot.handle(m) for m in messages))
+
+    asyncio.run(together(Message("민트초코 좋아", thread, Author("b", "관리자")), Message("ㅋㅋ", thread, Author("a", "민지"))))
+    assert "민트초코" not in memory.load("g", "a")["likes"]  # b 의 말이 a 의 기억에 들어가지 않음
+    world.clear()
+    asyncio.run(together(Message("내 생일 언제로 돼 있어?", thread, Author("a", "민지")), Message("ㅋㅋ", thread, Author("b", "관리자"))))
+    said = " ".join(text for _, text in world)
+    assert "3월 5일" in said and "12월 24일" not in said  # a 의 물음에 b 의 정보로 답하지 않음

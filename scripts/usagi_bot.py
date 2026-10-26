@@ -50,7 +50,7 @@ REPLYABLE = (discord.MessageType.default, discord.MessageType.reply)  # 입장 �
 HACHIWARE_DELAY_S = (1.0, 2.2)  # 우사기가 답한 뒤 하치와레가 번역을 올리기까지 (초)
 
 log = logging.getLogger("usagi")
-waiting: dict = {}  # 채널 id → 답하려고 모으는 중인 채팅
+waiting: dict = {}  # 채널 id (1:1 스레드는 (스레드 id, 채팅한 사람 id)) → 답하려고 모으는 중인 채팅
 last_reply: dict = {}  # 채널 id → 바로 전에 한 답 (되풀이하지 않게)
 last_translation: dict = {}  # 채널 id → 하치와레의 바로 전 번역
 hachiware_url = ""  # 우사기 채널 웹훅인지 확인한 뒤 main 에서 정함
@@ -65,16 +65,17 @@ async def handle(message):
     parent = getattr(message.channel, "parent_id", None)  # 스레드면 그 스레드가 달린 채널
     if not chat.should_reply(message.author.bot, message.channel.id, config.USAGI_CHANNEL_ID, parent_id=parent):
         return
-    channel_id = message.channel.id
-    if channel_id in waiting:
-        waiting[channel_id].append(message)
+    # 1:1 스레드는 사람마다 따로 모음: 스레드를 볼 수 있는 다른 사람의 채팅이 주인의 채팅과 섞이지 않게
+    where = (message.channel.id, message.author.id) if parent else message.channel.id
+    if where in waiting:
+        waiting[where].append(message)
         return
-    batch = waiting[channel_id] = [message]
+    batch = waiting[where] = [message]
     seen = 0
     while seen < len(batch):
         seen = len(batch)
         await asyncio.sleep(GATHER_S)
-    del waiting[channel_id]
+    del waiting[where]
     await answer(batch)
 
 
