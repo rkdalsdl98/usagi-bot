@@ -1,6 +1,6 @@
 """서버를 나가거나 추방된 사람의 사람별 기록 지우기.
 
-지우는 것: 우사기 기억(가르친 것 포함), 생일, 개인 번역 설정, 갑옷씨 등급, 1:1 스레드 기록과 그 스레드.
+지우는 것: 우사기 기억(가르친 것 포함), 남은 리마인드, 생일, 개인 번역 설정, 갑옷씨 등급, 1:1 스레드 기록과 그 스레드.
 모두의 기록에 섞인 것(지난 투표 결과, 게임 점수)은 남깁니다. /추방 은 그 자리에서, 스스로 나간 사람은
 버튼 서버가 SWEEP_S 마다 서버 사람 목록과 견주어 지웁니다 (scripts/serve_local.py, 처리 줄 안에서).
 같은 확인에서 직장인 갑옷씨 아래인데 1:1 스레드가 있는 사람은 그 스레드에서 내보냅니다 (기록은 그대로).
@@ -9,7 +9,7 @@
 import logging
 import urllib.error
 
-from . import birthdays, config, discord, hachiware, members, memory, storage, vault
+from . import birthdays, config, discord, hachiware, members, memory, reminders, storage, vault
 
 log = logging.getLogger(__name__)
 
@@ -32,8 +32,9 @@ def forget_person(guild_id: str, user_id: str) -> None:
     if memory.usable():
         try:
             memory.forget(guild_id, uid)
+            reminders.forget(guild_id, uid)
         except (vault.Broken, OSError, ValueError) as e:
-            log.warning("나간 사람의 기억 파일을 못 지움: %s", type(e).__name__)
+            log.warning("나간 사람의 기억·리마인드를 못 지움: %s", type(e).__name__)
 
 
 def _forget_thread(guild_id: str, uid: str) -> None:

@@ -136,3 +136,15 @@ def test_thread_delete_network_error_is_retried_later(world):
     departed.discord.delete_channel = offline
     departed.forget_person(G, "gone")  # 예외 없음 (/추방 응답이 실패하지 않게)
     assert records("gone")["thread"] and not records("gone")["birthday"]
+
+
+def test_forget_person_removes_their_reminders(world):
+    from datetime import datetime
+
+    from lunchbot import config, reminders
+
+    later = datetime(2030, 1, 1, 9, 0, tzinfo=config.KST)
+    reminders.add(G, "gone", "x", "tg", "회의", later, later)
+    reminders.add(G, "stay", "y", "ts", "운동", later, later)
+    departed.forget_person(G, "gone")
+    assert reminders.mine(G, "gone") == [] and [r["text"] for r in reminders.mine(G, "stay")] == ["운동"]

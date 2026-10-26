@@ -31,9 +31,10 @@ import logging
 import random
 import urllib.error
 from dataclasses import dataclass, field
+from datetime import datetime
 
-from lunchbot import (birthdays, config, departed, discord, game, hachiware, inbox, meals, members, memory, messages, roles,
-                     storage)
+from lunchbot import (birthdays, config, departed, discord, game, hachiware, inbox, meals, members, memory, messages,
+                     reminders, roles, storage)
 import recommend
 
 log = logging.getLogger()
@@ -65,12 +66,23 @@ def _sub(name: str, description: str, *options) -> dict:
     return {"type": SUB, "name": name, "description": description, "options": list(options)}
 
 
+_YEAR = config.now_kst().year  # /리마인드 [년] 에 넣을 수 있는 해 (올해부터 5년)
+
 # 디스코드에 등록할 명령. 이름에 띄어쓰기를 못 넣어서 '명령 → 묶음 → 하위 명령'으로 '/하치와레 번역 켜기'처럼 보이게 함.
 # 서버 설정 → 연동의 명령별 권한은 맨 앞 명령 단위로만 걸리므로, 필요한 등급이 다른 명령은 맨 앞 명령을 따로 둠
 # (/전체번역 은 /하치와레 와, /멤버추가 는 /멤버승급 과 따로)
 DEFINITIONS = [
     {"name": "도움", "description": "내 등급으로 쓸 수 있는 우사기 명령과 사용법을 하치와레가 알려 줘요", "contexts": [0]},
     {"name": "우사기", "description": "나와 우사기 봇만 있는 비공개 스레드에서 1:1로 대화해요", "contexts": [0]},
+    {"name": "리마인드", "description": "정한 시각에 하치와레가 1:1 스레드에서 알려 줘요 (년·월·일을 비우면 오늘)",
+     "contexts": [0], "options": [
+        _text("내용", "알려 받을 내용", reminders.TEXT_CHARS), _int("시간", "몇 시 (0~23)", 0, 23),
+        _int("분", "몇 분 (0~59)", 0, 59), _int("년", "몇 년 (비우면 올해)", _YEAR, _YEAR + 5, required=False),
+        _int("월", "몇 월 (비우면 이번 달)", 1, 12, required=False), _int("일", "며칠 (비우면 오늘)", 1, 31, required=False),
+    ]},
+    {"name": "리마인드목록", "description": "내가 걸어 둔 리마인드를 봐요 (나만 보여요)", "contexts": [0]},
+    {"name": "리마인드취소", "description": "리마인드 하나를 지워요 (번호는 /리마인드목록)", "contexts": [0], "options": [
+        _int("번호", "지울 리마인드 번호", 1, reminders.LIMIT)]},
     {"name": "기억", "description": "1:1 대화에서 우사기가 나에 대해 기억하는 것 (나만 보여요)", "contexts": [0], "options": [
         _sub("보기", "우사기가 나에 대해 기억하는 것과 내가 가르친 것을 봐요"),
         _sub("지우기", "가르친 것 하나를 지우거나, 번호를 비우면 기억을 전부 지워요",
@@ -115,6 +127,9 @@ DEFINITIONS = [
 USAGE = {
     "도움": ("/도움", "쓸 수 있는 명령과 사용법 보기"),
     "우사기": ("/우사기", "나와 우사기만 있는 비공개 스레드에서 1:1 대화"),
+    "리마인드": ("/리마인드 [내용] [시간] [분] [년] [월] [일]", "정한 시각에 하치와레가 1:1 스레드에서 알려 줌 (년·월·일은 비우면 오늘)"),
+    "리마인드목록": ("/리마인드목록", "내가 걸어 둔 리마인드 보기 (나만 보여요)"),
+    "리마인드취소": ("/리마인드취소 [번호]", "리마인드 하나 지우기 (번호는 /리마인드목록)"),
     "기억 보기": ("/기억 보기", "1:1 대화에서 우사기가 나에 대해 기억하는 것 보기 (나만 보여요)"),
     "기억 지우기": ("/기억 지우기 [번호]", "가르친 것 하나, 또는 번호 없이 기억 전부 지우기 (나만 보여요)"),
     "점심 추천": ("/점심 추천", "오점뭐에 점심 메뉴 추천 보내기"),
@@ -365,21 +380,11 @@ def _usagi(actor, guild_id, **_) -> Outcome:
     parent, token = config.USAGI_CHANNEL_ID, config.DISCORD_BOT_TOKEN
     if not parent:
         return _said("no_usagi_channel")
-    record = storage.get_json(storage.threads_key(guild_id)) or {}
-    mine = record.setdefault("usagi", {})
     try:
-        thread = discord.get_channel(token, mine[actor.id]) if actor.id in mine else None
-        if thread and (thread.get("thread_metadata") or {}).get("archived"):  # 오래 조용해서 보관됨
-            discord.unarchive_thread(token, thread["id"])
-        if not thread:  # 처음이거나 누가 스레드를 지웠으면 새로
-            thread = discord.create_thread(token, parent, f"우사기 · {actor.name}")
-            mine[actor.id] = thread["id"]
-            storage.put_json(storage.threads_key(guild_id), record)
-        discord.add_thread_member(token, thread["id"], actor.id)
+        tid = _open_thread(actor, guild_id)
     except urllib.error.HTTPError as e:
         log.warning("/우사기 스레드 실패 (%s): HTTP %s", actor.name, e.code)
         return _said("thread_failed")
-    tid = thread["id"]
 
     def greet():  # 우사기가 스레드에서 그 사람을 불러 인사 (알림이 가서 스레드를 찾게), 번역이 켜져 있으면 하치와레도
         script = hachiware.greet_script()
@@ -387,6 +392,67 @@ def _usagi(actor, guild_id, **_) -> Outcome:
         hachiware.say(parent, hachiware.relay(script.text), thread=tid, user_id=actor.id)
 
     return _said("usagi_thread", later=[greet], thread=f"<#{tid}>")
+
+
+def _open_thread(actor, guild_id: str) -> str:
+    """그 사람의 1:1 스레드를 열어 id 를 돌려줍니다 (없거나 지워졌으면 새로, 보관됐으면 다시 엶). 실패하면 HTTPError."""
+    parent, token = config.USAGI_CHANNEL_ID, config.DISCORD_BOT_TOKEN
+    record = storage.get_json(storage.threads_key(guild_id)) or {}
+    mine = record.setdefault("usagi", {})
+    thread = discord.get_channel(token, mine[actor.id]) if actor.id in mine else None
+    if thread and (thread.get("thread_metadata") or {}).get("archived"):  # 오래 조용해서 보관됨
+        discord.unarchive_thread(token, thread["id"])
+    if not thread:  # 처음이거나 누가 스레드를 지웠으면 새로
+        thread = discord.create_thread(token, parent, f"우사기 · {actor.name}")
+        mine[actor.id] = thread["id"]
+        storage.put_json(storage.threads_key(guild_id), record)
+    discord.add_thread_member(token, thread["id"], actor.id)
+    return thread["id"]
+
+
+# ── /리마인드 (lunchbot/reminders.py, 나만 보기. 알림은 하치와레가 1:1 스레드에서) ──
+
+def _remind_add(actor, guild_id, args, **_) -> Outcome:
+    if not memory.usable():
+        return _game_says("remind_locked", private=True)
+    if not config.USAGI_CHANNEL_ID:
+        return _game_says("no_usagi_channel", private=True)
+    now = config.now_kst()
+    try:
+        at = reminders.when(now, int(args["시간"]), int(args["분"]), args.get("년"), args.get("월"), args.get("일"))
+        if not str(args.get("내용", "")).strip():
+            raise reminders.RemindError("empty")
+        tid = _open_thread(actor, guild_id)
+        reminders.add(guild_id, actor.id, actor.name, tid, args["내용"], at, now)
+    except reminders.RemindError as e:
+        return _game_says(f"remind_{e}", private=True, n=reminders.LIMIT)
+    except urllib.error.HTTPError as e:
+        log.warning("/리마인드 스레드 실패: HTTP %s", e.code)
+        return _game_says("thread_failed", private=True)
+    out = _game_says("remind_saved", private=True, date=reminders._clock(at))
+    out.info = f"-# {reminders._clock(at)}에 <#{tid}> 에서 하치와레가 불러 알려 줄게요. 지우려면 `/리마인드취소`."
+    return out
+
+
+def _remind_list(actor, guild_id, **_) -> Outcome:
+    if not memory.usable():
+        return _game_says("remind_locked", private=True)
+    items = reminders.mine(guild_id, actor.id)
+    if not items:
+        return _game_says("remind_none", private=True)
+    out = _game_says("remind_list", private=True)
+    lines = [f"{i}. {reminders._clock(datetime.fromisoformat(r['at']))} — {r['text']}" for i, r in enumerate(items, 1)]
+    out.info = "\n".join(["**걸어 둔 리마인드** (나만 보여요, `/리마인드취소 [번호]`로 지워요)"] + lines)
+    return out
+
+
+def _remind_cancel(actor, guild_id, args, **_) -> Outcome:
+    if not memory.usable():
+        return _game_says("remind_locked", private=True)
+    number = int(args["번호"])
+    if reminders.cancel(guild_id, actor.id, number):
+        return _game_says("remind_cancelled", private=True, n=number)
+    return _game_says("remind_bad_number", private=True)
 
 
 def _invoke(function_name: str, payload: dict) -> None:
@@ -806,6 +872,9 @@ def _birthday_remove(actor, guild_id, **_) -> Outcome:
 RUN = {
     "도움": _help,
     "우사기": _usagi,
+    "리마인드": _remind_add,
+    "리마인드목록": _remind_list,
+    "리마인드취소": _remind_cancel,
     "기억 보기": _memory_show,
     "기억 지우기": _memory_forget,
     "점심 추천": _recommend(meals.LUNCH),

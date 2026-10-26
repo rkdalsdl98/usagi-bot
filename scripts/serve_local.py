@@ -5,7 +5,8 @@ run_local.py 로 보낸 메시지의 버튼을 처리할 수 있습니다.
 우사기 명령은 응답(우사기 소리)부터 보내고, 그 뒤에 하치와레 말과 명령으로 부른 추천을 따로 처리합니다.
 입력과 응답 뒤에 할 일은 들어온 순서대로 줄(lunchbot/inbox.py)에 넣어 하나씩 처리합니다. 거의 같은 순간에 온
 두 입력(예: 게임 답 둘)이 같은 파일을 함께 고쳐 써서 한쪽이 사라지지 않게 하기 위해서입니다.
-서버를 나간 사람의 기록 지우기(lunchbot/departed.py)도 10분마다 같은 줄에서 합니다.
+서버를 나간 사람의 기록 지우기(lunchbot/departed.py)도 10분마다, 리마인드 보내기(lunchbot/reminders.py)도 30초마다
+같은 줄에서 합니다.
 디스코드가 이 서버에 닿으려면 공개 HTTPS 주소가 필요합니다. 다른 터미널에서 터널을 띄우고
 그 주소를 개발자 포털의 Interactions Endpoint URL 에 넣습니다.
 
@@ -49,7 +50,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefm
 local_storage.install()
 import commands  # noqa: E402
 import interaction  # noqa: E402
-from lunchbot import config, departed, discord, hachiware, inbox  # noqa: E402
+from lunchbot import config, departed, discord, hachiware, inbox, reminders  # noqa: E402
 
 line = inbox.Inbox()  # 들어온 순서대로 하나씩
 SWEEP_FIRST_S = 30  # 서버를 띄우고 처음 나간 사람을 찾기까지
@@ -64,6 +65,25 @@ def sweep_now() -> None:
     n = departed.sweep(guild_id, {m["user"]["id"] for m in people}, commands._owner(guild_id))
     if n:
         logging.info("나간 사람 %d명의 기록을 지웠어요", n)
+
+
+def remind_now() -> None:
+    """시각이 된 리마인드를 하치와레가 1:1 스레드에서 알립니다 (처리 줄 안에서 부름)."""
+    if not config.USAGI_CHANNEL_ID:
+        return
+    guild_id = discord.get_channel(config.DISCORD_BOT_TOKEN, config.USAGI_CHANNEL_ID)["guild_id"]
+    n = reminders.fire_all(guild_id, commands._owner(guild_id), config.now_kst())
+    if n:
+        logging.info("리마인드 %d개를 보냈어요", n)
+
+
+def _reminder() -> None:
+    while True:
+        time.sleep(reminders.FIRE_S)
+        try:
+            line.ask(remind_now)
+        except Exception as e:  # 다음에 다시
+            logging.warning("리마인드 확인 실패: %s", type(e).__name__)
 
 
 def _sweeper() -> None:
@@ -119,6 +139,7 @@ class Handler(BaseHTTPRequestHandler):
 HOST = os.environ.get("SERVE_HOST", "127.0.0.1")
 server = ThreadingHTTPServer((HOST, PORT), Handler)
 threading.Thread(target=_sweeper, daemon=True).start()
+threading.Thread(target=_reminder, daemon=True).start()
 print(f"http://{HOST}:{PORT} 에서 버튼 클릭을 기다립니다. 저장 폴더: {local_storage.LOCAL_DIR}")
 print("멈추려면 Ctrl+C")
 try:

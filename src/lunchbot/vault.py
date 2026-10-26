@@ -70,6 +70,11 @@ def person_key(master_key: bytes, guild_id: str, user_id: str) -> bytes:
     return _derive(master_key, "memory", str(guild_id), str(user_id), KEY_BYTES)
 
 
+def guild_key(master_key: bytes, guild_id: str, label: str) -> bytes:
+    """서버 하나의 파일을 잠그는 키 (/리마인드 처럼 사람을 모른 채 시각만 보고 꺼내야 하는 것)."""
+    return _derive(master_key, label, str(guild_id), "", KEY_BYTES)
+
+
 def file_name(master_key: bytes, guild_id: str, user_id: str) -> str:
     return _derive(master_key, "name", str(guild_id), str(user_id), 16).hex()
 

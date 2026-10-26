@@ -97,6 +97,10 @@ def game_key(channel_id: str) -> str:
     return f"games/{channel_id}.json"  # 이미지 랜덤 주제 게임 (채널마다 하나)
 
 
+def reminders_key(guild_id: str) -> str:
+    return f"reminders/{guild_id}.json"  # /리마인드: 서버마다 하나, 마스터 키로 잠금 (보낼 때까지만 둠)
+
+
 def threads_key(guild_id: str) -> str:
     return f"threads/{guild_id}.json"  # /우사기 1:1 스레드: 사람마다 스레드 id
 

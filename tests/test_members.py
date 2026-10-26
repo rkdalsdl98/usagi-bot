@@ -26,7 +26,8 @@ def test_who_can_use_which_command():
     assert members.allowed(0) == everyone
     assert members.allowed(WALKER) == everyone + ["멤버추가"]
     # /우사기(1:1 스레드)와 /기억 은 직장인 갑옷씨부터
-    assert members.allowed(WORKER) == members.allowed(CAPTAIN) == ["도움", "우사기", "기억 보기", "기억 지우기"] + everyone[1:] + [
+    assert members.allowed(WORKER) == members.allowed(CAPTAIN) == ["도움", "우사기", "기억 보기", "기억 지우기", "리마인드",
+                                                                  "리마인드목록", "리마인드취소"] + everyone[1:] + [
         "멤버추가", "멤버승급", "멤버강등", "멤버삭제", "추방", "전체번역 켜기", "전체번역 끄기"]
     assert members.check("우사기", WALK) == members.check("기억 보기", NOBODY) == "rank_low"
     assert members.check("전체번역 켜기", WALK) == "rank_low"  # 서버 전체 번역은 직장인 갑옷씨부터
