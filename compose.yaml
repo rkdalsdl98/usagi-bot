@@ -7,6 +7,7 @@
 #   recommend    추천 메시지를 한 번 보내는 명령 (서버 아님): docker compose run --rm recommend [--dinner]
 #
 # 비밀 값은 .env 에서 읽고, 투표·추천 기록은 호스트의 .local-s3/ 를 함께 씁니다.
+# 1:1 대화 기억을 잠그는 마스터 키는 프로젝트 폴더 밖 도커 볼륨(usagi-vault)에 둡니다 (잃으면 기억을 못 풂).
 
 x-app: &app
   build: .
@@ -20,8 +21,10 @@ services:
     environment:
       SERVE_HOST: 0.0.0.0
       LOCAL_S3_DIR: /data
+      VAULT_PATH: /vault/master.key  # /기억 보기·지우기, 나간 사람의 기억 지우기
     volumes:
       - ./.local-s3:/data
+      - usagi-vault:/vault
     restart: unless-stopped
 
   tunnel:
@@ -36,8 +39,10 @@ services:
     command: ["python", "scripts/usagi_bot.py"]
     environment:
       LOCAL_S3_DIR: /data  # 하치와레 번역 켜짐/꺼짐을 버튼 서버와 같은 곳에서 읽음
+      VAULT_PATH: /vault/master.key  # 1:1 대화 기억 (버튼 서버와 같은 키)
     volumes:
       - ./.local-s3:/data
+      - usagi-vault:/vault
     restart: unless-stopped
 
   recommend:
@@ -48,3 +53,6 @@ services:
       LOCAL_S3_DIR: /data
     volumes:
       - ./.local-s3:/data
+
+volumes:
+  usagi-vault: {}

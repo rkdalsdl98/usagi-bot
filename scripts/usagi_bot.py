@@ -27,7 +27,7 @@
 사용법:
   .env 에 DISCORD_BOT_TOKEN, USAGI_CHANNEL_ID 를 넣고
   docker compose up -d usagi
-  (도커 없이: uv run --python 3.12 --with discord.py==2.4.0 --with boto3 scripts/usagi_bot.py)
+  (도커 없이: uv run --python 3.12 --with discord.py==2.4.0 --with boto3 --with pynacl==1.5.0 scripts/usagi_bot.py)
 """
 import asyncio
 import logging

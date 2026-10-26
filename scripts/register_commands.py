@@ -5,7 +5,7 @@
 
 사용법:
   .env 에 DISCORD_BOT_TOKEN, DISCORD_CHANNEL_ID 를 넣고 (서버는 그 채널의 서버)
-  uv run --python 3.12 --with boto3 scripts/register_commands.py
+  uv run --python 3.12 --with boto3 --with pynacl==1.5.0 scripts/register_commands.py
   docker compose run --rm --entrypoint python recommend scripts/register_commands.py
 
   --preview  디스코드에 올리지 않고 올릴 명령(JSON)만 출력
