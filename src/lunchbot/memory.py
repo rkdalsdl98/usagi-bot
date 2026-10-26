@@ -1,7 +1,8 @@
 """우사기 1:1 대화 기억 (사람마다 따로, 원문 없이).
 
 채팅 원문은 남기지 않고 뽑은 것만 남깁니다: 마지막으로 이야기한 날, 최근 기분, 자주 하는 이야기 종류,
-좋아한다/싫어한다고 한 것, 최근 이야기한 음식, 그 사람이 가르쳐 준 것, 기억 안내를 본 날.
+좋아한다/싫어한다고 한 것, 최근 이야기한 음식, 그 사람이 가르쳐 준 것(모르는 낱말의 풀이 포함),
+물어봤지만 설명 없이 넘긴 낱말(known, 다시 묻지 않게), 기억 안내를 본 날.
 사람마다 다른 키로 잠가(vault) memories/{서버 id}/{해시}.json 에 둡니다. 파일이 망가졌거나 키를 잃었으면
 빈 기억으로 봅니다 (봇은 계속 대화함).
 """
@@ -16,18 +17,16 @@ log = logging.getLogger(__name__)
 MOOD_KINDS = ("sad", "angry", "laugh", "praise", "surprise")
 KINDS = frozenset(kind for kind, _ in chat.KINDS)
 KEY_ID_KEY = "memories/key-id.json"  # 기억 파일들을 잠근 마스터 키의 지문 (키 자체는 아님)
-LIMITS = {"moods": 10, "likes": 20, "dislikes": 20, "foods": 5, "taught": 50}  # 최근 것만 (오래된 것은 밀려남)
+LIMITS = {"moods": 10, "likes": 20, "dislikes": 20, "foods": 5, "taught": 50, "known": 300}  # 최근 것만 (오래된 것은 밀려남)
 NOT_THINGS = frozenset({"너", "나", "넌", "난", "우사기", "그거", "이거", "저거", "다", "진짜", "너무", "완전", "정말"})
-FOOD_WORDS = ("라멘", "라면", "국밥", "순대국", "치킨", "피자", "햄버거", "버거", "떡볶이", "초밥", "스시", "파스타",
-              "짜장면", "짬뽕", "탕수육", "삼겹살", "고기", "김밥", "샐러드", "커피", "돈까스", "돈가스", "카레", "쌀국수",
-              "냉면", "김치찌개", "된장찌개", "부대찌개", "비빔밥", "샌드위치", "마라탕", "족발", "보쌈", "우동", "덮밥")  # 두 글자 이상만 (한 글자는 '회의'·'회사'처럼 잘못 잡힘)
+FOOD_WORDS = talk.FOOD_WORDS  # 두 글자 이상만 (한 글자는 '회의'·'회사'처럼 잘못 잡힘)
 _LIKE = re.compile(r"(\S+)\s+(?:좋아|최고)")
 _DISLIKE = re.compile(r"(\S+)\s+싫어")
 
 
 def new() -> dict:
     return {"v": 1, "last_seen": None, "moods": [], "topics": {}, "likes": [], "dislikes": [], "foods": [],
-            "taught": [], "noticed": None}
+            "taught": [], "known": [], "noticed": None}
 
 
 def _master() -> bytes:

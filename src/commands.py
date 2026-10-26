@@ -753,7 +753,7 @@ def _memory_show(actor, guild_id, interaction, **_) -> Outcome:
     if not memory.usable():
         return _memory_locked()
     mem = memory.load(guild_id, actor.id)
-    if not mem["last_seen"] and not mem["taught"]:
+    if not mem["last_seen"] and not mem["taught"] and not mem["known"]:
         return _game_says("memory_none", private=True)
     lines = ["**우사기가 기억하는 것** (나만 보여요)"]
     if mem["last_seen"]:
@@ -768,11 +768,17 @@ def _memory_show(actor, guild_id, interaction, **_) -> Outcome:
             lines.append(f"- {label}: " + ", ".join(_short(x) for x in mem[field]))
     if mem["foods"]:
         lines.append("- 최근 이야기한 음식: " + ", ".join(f"{d} {f}" for d, f in mem["foods"]))
+    if mem["known"]:
+        lines.append("- 알게 된 낱말 (물어봤지만 그냥 쓰는 말): " + ", ".join(_short(w) for w in mem["known"]))
     if mem["taught"]:
         lines.append("**가르쳐 준 것** (`/기억 지우기 [번호]`로 하나씩 지워요)")
         for i, t in enumerate(mem["taught"], 1):
-            meant = (f"'{_short(t['answer'], 40)}'라고 답하기" if t["kind"] == "answer"
-                     else f"{_TOPIC_NAMES.get(t['topic'], t['topic'])} 물음")
+            if t["kind"] == "answer":
+                meant = f"'{_short(t['answer'], 40)}'라고 답하기"
+            elif t["kind"] == "word":
+                meant = f"'{_short(t['means'], 40)}' 뜻"
+            else:
+                meant = f"{_TOPIC_NAMES.get(t['topic'], t['topic'])} 물음"
             lines.append(f"{i}. {_short(' '.join(t['words']))} → {meant}")
     first, *rest = _pages(lines)
     out = _game_says("memory_shown", private=True)

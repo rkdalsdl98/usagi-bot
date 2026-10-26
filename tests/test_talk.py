@@ -126,3 +126,37 @@ def test_similar():
     assert talk.similar(frozenset({"a", "b"}), frozenset({"a", "b"})) == 1.0
     assert talk.similar(frozenset({"a", "b"}), frozenset({"a", "c"})) == pytest.approx(1 / 3)
     assert talk.similar(frozenset(), frozenset({"a"})) == 0.0
+
+
+@pytest.mark.parametrize("text, word", [
+    ("아샷추 마시고 싶다", "아샷추"), ("점메추", "점메추"), ("아샷추가 너무 좋아", "아샷추"), ("오늘 점메추 해줘", "점메추"),
+    ("오늘 회의 너무 길었다", None), ("치킨이랑 맥주 먹고 싶어", None), ("ㅋㅋㅋ 웃겨", None), ("야하 우라", None),
+    ("아 진짜 피곤하다", None), ("오늘 점심 뭐야?", None)])
+def test_new_word_finds_unknown_nouns_in_any_sentence(text, word):
+    assert talk.new_word(text, set()) == word
+
+
+def test_known_words_are_not_new():
+    assert talk.new_word("아샷추 마시고 싶다", {"아샷추"}) is None
+    assert talk.new_word("아샷추랑 점메추", {"아샷추"}) == "점메추"
+
+
+def test_requests_count_as_questions():
+    for text in ("점메추 해줘", "아샷추 알아", "아샷추 알려줘"):
+        assert read(text).kind == "unknown", text
+
+
+def test_teaching_a_word_gloss():
+    assert talk.teaching("아이스티에 샷 추가라는 뜻이야", sup, word="아샷추") == {"kind": "word", "means": "아이스티에 샷 추가"}
+    assert talk.teaching("아샷추는 아이스티에 샷 추가한 거야", sup, word="아샷추") == {"kind": "word",
+                                                                         "means": "아이스티에 샷 추가한"}
+    assert talk.teaching("점심 메뉴 추천이야", sup, word="점메추") == {"kind": "meaning", "topic": "lunch", "ask": "what"}
+    assert talk.teaching("아이스티에 샷 추가라는 뜻이야", sup) is None  # 무슨 낱말의 풀이인지 모르면 못 배움
+
+
+def test_gloss_question_and_teach_turn():
+    gloss = {"words": ["아샷추"], "kind": "word", "means": "아이스티에 샷 추가", "at": "2026-10-26"}
+    turn = read("아샷추가 뭐야?", taught=[gloss])
+    assert (turn.kind, turn.answer) == ("gloss", "아이스티에 샷 추가") and turn.words == {"아샷추"}
+    turn = read("아이스티에 샷 추가라는 뜻이야", ctx(unknown=frozenset({"아샷추"})))
+    assert turn.kind == "teach" and turn.teach == {"kind": "word", "means": "아이스티에 샷 추가"}

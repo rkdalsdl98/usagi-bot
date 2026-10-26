@@ -126,3 +126,10 @@ def test_truncated_file_reads_as_empty(aws):
     memory.save("g", "a", memory.new())
     boto3.client("s3").put_object(Bucket="lunch-test", Key=memory.key("g", "a"), Body=b'{"v": 1, "bo')
     assert memory.load("g", "a") == memory.new()
+
+
+def test_known_words_are_kept_newest(aws):
+    mem = memory.new()
+    mem["known"] = [f"낱말{i}" for i in range(305)]
+    memory.save("g", "a", mem)
+    assert memory.load("g", "a")["known"] == mem["known"][-300:]

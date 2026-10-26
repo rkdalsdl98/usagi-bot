@@ -140,3 +140,13 @@ def test_memory_show_fits_discord_and_shows_everything(team):
     assert all(f"2026-10-{d:02d}" in shown for d in range(10, 20))  # 최근 기분 모두
     assert all(f"좋아하는것{i:02d}" in shown and f"싫어하는것{i:02d}" in shown for i in range(20))
     assert "부르기" in shown and "인사" in shown  # 자주 하는 이야기 모두
+
+
+def test_memory_show_lists_words_learned(team):
+    mem = memory.new()
+    mem["last_seen"] = "2026-10-26"
+    mem["known"] = ["민지네"]
+    mem["taught"] = [{"words": ["아샷추"], "kind": "word", "means": "아이스티에 샷 추가", "at": "2026-10-26"}]
+    memory.save(GUILD, "work", mem)
+    content = call("기억 보기", "work")["data"]["content"]
+    assert "알게 된 낱말" in content and "민지네" in content and "1. 아샷추 → '아이스티에 샷 추가' 뜻" in content

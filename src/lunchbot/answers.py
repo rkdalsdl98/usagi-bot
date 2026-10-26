@@ -22,9 +22,10 @@ OFF_HOUR = 18  # 퇴근·저녁 추천 시각 (평일)
 ASK_BACK = 0.5  # 심심하거나 힘들다고 할 때 우사기가 "뭐 먹고 싶어?" 하고 되묻는 비율
 RECALL_DAYS = 7  # 이보다 오래된 기분·음식은 꺼내지 않음
 TAUGHT_CHUNKS = 4
+KNOW_REMARK = 0.35  # 알려 준 낱말이 채팅에 나오면 하치와레가 아는 티를 내는 비율
 
 MEMORY_GUIDE = ("알려 줄 게 있어! 우사기는 여기서 나눈 이야기 중 이것만 기억해: 마지막으로 이야기한 날, 기분, "
-                "자주 하는 이야기, 좋아하거나 싫어한다고 한 것, 최근 이야기한 음식, 네가 가르쳐 준 것. "
+                "자주 하는 이야기, 좋아하거나 싫어한다고 한 것, 최근 이야기한 음식, 네가 가르쳐 준 것(모르는 낱말과 그 뜻 포함). "
                 "대화 원문은 남기지 않고, 기억은 너만의 열쇠로 잠가서(암호화) 저장해. 서버를 나가거나 추방되면 다 지우고, "
                 "/기억 보기·/기억 지우기로 언제든 보고 지울 수 있어.")
 
@@ -211,8 +212,26 @@ def _me(topic: str, ask: str, mem: dict | None, today: date, rng) -> Reply:
     return _say([("happy", "이제부터~"), ("excited", "기억할게!")], rng)
 
 
-def unknown(teachable: bool, rng) -> Reply:
-    return _say([("puzzled", "음…?"), ("sulky", "잘 모르겠어…")], rng, own="무슨 뜻인지 알려 줄래?" if teachable else "")
+def unknown(teachable: bool, rng, word: str | None = None) -> Reply:
+    """모르는 물음·낱말. word 를 주면 그 낱말을 짚어 물음."""
+    beats = [("puzzled", f"{word}…?"), ("sulky", "그게 뭐야…?")] if word else [("puzzled", "음…?"), ("sulky", "잘 모르겠어…")]
+    return _say(beats, rng, own="무슨 뜻인지 알려 줄래?" if teachable else "")
+
+
+def gloss(word: str, means: str, rng) -> Reply:
+    """알려 준 낱말 풀이로 답함 ("아샷추가 뭐야?")."""
+    return _say([("happy", f"{word}?"), ("excited", f"{means}!")], rng)
+
+
+def _has_final(word: str) -> bool:
+    """마지막 글자에 받침이 있는지 (이면/면 고르기)."""
+    last = word[-1]
+    return "가" <= last <= "힣" and (ord(last) - ord("가")) % 28 != 0
+
+
+def knows(word: str, means: str) -> str:
+    """알려 준 낱말이 나왔을 때 하치와레의 한마디 ("아샷추면 아이스티에 샷 추가지?")."""
+    return f"{word}{'이면' if _has_final(word) else '면'} {means}지?"
 
 
 def learned(rng) -> Reply:

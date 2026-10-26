@@ -164,3 +164,13 @@ def test_day_words_read_naturally(days):
                     for t, a in (("talk", "when"), ("me", "remember"), ("last", "what")))
     for awkward in ("오늘에", "어제에", "어제엔", "오늘엔"):
         assert awkward not in said
+
+
+def test_asking_about_a_word_and_knowing_it():
+    r = answers.unknown(True, rng(), word="아샷추")
+    assert [w for _, w in r.script.parts] == ["아샷추…?", "그게 뭐야…?"] and r.own == "무슨 뜻인지 알려 줄래?"
+    g = answers.gloss("아샷추", "아이스티에 샷 추가", rng())
+    assert "아이스티에 샷 추가" in g.script.text and paired(g.script)
+    assert answers.knows("아샷추", "아이스티에 샷 추가") == "아샷추면 아이스티에 샷 추가지?"
+    assert answers.knows("점심빵", "빵") == "점심빵이면 빵지?"
+    assert "모르는 낱말" in answers.MEMORY_GUIDE

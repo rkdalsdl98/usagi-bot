@@ -95,7 +95,8 @@ def test_one_persons_teaching_is_not_anothers(d):
     noticed("b")
     say(d, "a", "점메추?")
     say(d, "a", "점심 메뉴 추천이라는 뜻이야")
-    assert "잘 모르겠어" in words_of(say(d, "b", "점메추?"))
+    told = words_of(say(d, "b", "점메추?"))
+    assert "농민백암순대" not in told and "점메추…?" in told  # b 에게는 모르는 말 (a 가 알려 준 뜻을 안 씀)
 
 
 def test_other_person_in_my_thread_sees_nothing_of_mine(d):
@@ -175,3 +176,50 @@ def test_save_failure_still_answers(d, monkeypatch):
 def test_no_teaching_offer_on_the_guide_turn(d):
     talk = say(d, "a", "점메추?")
     assert talk.notice is True and "무슨 뜻인지" not in words_of(talk)
+
+
+def test_unknown_word_in_a_sentence_is_asked_then_learned(d):
+    noticed("a")
+    asked = say(d, "a", "아샷추 마시고 싶다")
+    assert "아샷추" in words_of(asked) and "무슨 뜻인지 알려 줄래?" in words_of(asked)
+    assert "알았어" in words_of(say(d, "a", "아이스티에 샷 추가라는 뜻이야"))
+    [gloss] = [t for t in memory.load("g", "a")["taught"] if t["kind"] == "word"]
+    assert gloss["words"] == ["아샷추"] and gloss["means"] == "아이스티에 샷 추가"
+    assert "아이스티에 샷 추가" in words_of(say(d, "a", "아샷추가 뭐야?"))
+
+
+def test_ignored_word_is_known_and_not_asked_again(d):
+    noticed("a")
+    say(d, "a", "아샷추 마시고 싶다")
+    say(d, "a", "ㅋㅋ 아무튼")  # 설명 없이 넘어감
+    assert "아샷추" in memory.load("g", "a")["known"]
+    later = NOW + timedelta(minutes=11)
+    assert "무슨 뜻인지" not in words_of(say(d, "a", "아샷추 또 마시고 싶다", now=later))
+
+
+def test_one_word_question_per_ten_minutes(d):
+    noticed("a")
+    say(d, "a", "아샷추 마시고 싶다")
+    assert "무슨 뜻인지" not in words_of(say(d, "a", "점메추 하자", now=NOW + timedelta(minutes=3)))
+    asked = say(d, "a", "점메추 하자", now=NOW + timedelta(minutes=11))
+    assert "점메추" in words_of(asked) and "무슨 뜻인지" in words_of(asked)
+
+
+def test_word_questions_only_for_remembering_people(d):
+    noticed("a")
+    noticed("b")
+    before = files()
+    off = say(d, "a", "아샷추 마시고 싶다", translating=False)  # 번역이 꺼져 있으면 묻지 않음
+    other = say(d, "b", "아샷추 마시고 싶다", thread="ta")  # 남의 스레드
+    assert off.plain and other.plain and files() == before
+
+
+def test_glossed_word_in_chat_shows_it_knows(d):
+    mem = memory.new()
+    mem["noticed"] = TODAY
+    mem["taught"] = [{"words": ["아샷추"], "kind": "word", "means": "아이스티에 샷 추가", "at": TODAY}]
+    memory.save("g", "a", mem)
+    remarks = [d.respond(guild_id="g", thread_id="ta", author_id="a", owner_id="own", text="아샷추 마시고 싶다",
+                         now=NOW, translating=True, rng=random.Random(seed)).remark for seed in range(20)]
+    assert any(r and "아샷추면 아이스티에 샷 추가지?" in r for r in remarks)
+    assert not all(remarks)  # 늘 그러지는 않음
