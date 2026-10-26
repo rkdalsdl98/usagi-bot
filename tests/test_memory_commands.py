@@ -104,3 +104,14 @@ def test_leaving_a_thread_that_is_gone(team):
     team.remove.fail = 404  # 이미 스레드가 없거나 그 사람이 없음
     team("멤버삭제", "own", "work")
     assert team.left == []
+
+
+def test_memory_commands_when_locked(team, tmp_path, monkeypatch):
+    from test_memory import switch_key
+
+    remembered("work")
+    switch_key(tmp_path, monkeypatch)
+    for command in ("기억 보기", "기억 지우기"):
+        body = call(command, "work")
+        content = body["data"]["content"]
+        assert body["data"]["flags"] == 64 and "열 수 없" in content and "아직 기억한 게 없어" not in content

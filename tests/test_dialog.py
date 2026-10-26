@@ -138,3 +138,25 @@ def test_plain_chat_brings_back_a_memory(d):
     talk = say(d, "a", "안녕")
     assert talk.plain is True and talk.remark == "3일 만이네!"
     assert memory.load("g", "a")["last_seen"] == TODAY
+
+
+def test_locked_memory_still_answers_and_records_nothing(d, tmp_path, monkeypatch):
+    from test_memory import switch_key
+
+    noticed("a")
+    before = files()
+    switch_key(tmp_path, monkeypatch)
+    talk = say(d, "a", "오늘 점심 뭐야?")
+    assert "농민백암순대" in words_of(talk) and answers.MEMORY_GUIDE not in words_of(talk)
+    say(d, "a", "라멘 좋아")
+    assert files() == before
+
+
+def test_save_failure_still_answers(d, monkeypatch):
+    noticed("a")
+
+    def full(*a, **k):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(memory, "save", full)
+    assert "농민백암순대" in words_of(say(d, "a", "오늘 점심 뭐야?"))

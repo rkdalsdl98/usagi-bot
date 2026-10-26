@@ -61,3 +61,19 @@ def test_install_swaps_delete_and_list_keys(monkeypatch):
         monkeypatch.setattr(storage, name, getattr(storage, name))  # 테스트가 끝나면 되돌림
     local_storage.install()
     assert storage.delete is local_storage.delete and storage.list_keys is local_storage.list_keys
+
+
+def test_local_put_json_never_leaves_a_torn_file(local, monkeypatch):
+    local.put_json("memories/g/a.json", {"ok": 1})
+    write = Path.write_text
+
+    def torn(self, text, *a, **k):  # 쓰다가 멈춤 (디스크가 참, 컨테이너가 멈춤)
+        write(self, text[:3], *a, **k)
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "write_text", torn)
+    with pytest.raises(OSError):
+        local.put_json("memories/g/a.json", {"ok": 2})
+    monkeypatch.setattr(Path, "write_text", write)
+    assert local.get_json("memories/g/a.json") == {"ok": 1}  # 반쯤 쓴 파일이 남지 않음
+    assert local.list_keys("memories/g/") == ["memories/g/a.json"]  # 임시 파일이 남거나 보이지 않음

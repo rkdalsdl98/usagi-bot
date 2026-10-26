@@ -346,6 +346,7 @@ NOTICES = {
     "memory_forgot": [[("sulky", "기억…"), ("sulky", "다 지웠어…")]],
     "memory_forgot_one": [[("happy", "{n}번!"), ("sulky", "잊어버렸어…")]],
     "memory_bad_number": [[("puzzled", "응?"), ("sulky", "그런 번호는 없어…")]],
+    "memory_locked": [[("puzzled", "응?"), ("sulky", "기억 상자를 열 수 없어…")]],
     "usagi_thread": [[("excited", "{thread}!"), ("happy", "거기서 기다릴게~")],
                      [("happy", "둘이서 놀자~"), ("excited", "{thread}로 와!")]],
     "thread_failed": [[("puzzled", "어?"), ("sulky", "스레드를 못 만들었어…"), ("sulky", "'비공개 스레드 만들기' 권한 문제…")]],

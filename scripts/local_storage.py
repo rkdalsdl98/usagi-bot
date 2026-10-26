@@ -6,6 +6,7 @@
 import json
 import os
 import sys
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -22,9 +23,15 @@ def get_json(key):
 
 
 def put_json(key, data):
+    """다 쓴 임시 파일로 바꿔 끼웁니다 (쓰다가 멈춰도 반쯤 쓴 파일이 남지 않게, 다른 컨테이너가 읽는 중이어도)."""
     path = LOCAL_DIR / key
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(_text(data), encoding="utf-8")
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        tmp.write_text(_text(data), encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def put_json_if_absent(key, data) -> bool:
@@ -47,7 +54,8 @@ def list_json(prefix) -> list:
 
 
 def list_keys(prefix) -> list:
-    return sorted(p.relative_to(LOCAL_DIR).as_posix() for p in LOCAL_DIR.glob(f"{prefix}*") if p.is_file())
+    return sorted(p.relative_to(LOCAL_DIR).as_posix() for p in LOCAL_DIR.glob(f"{prefix}*")
+                  if p.is_file() and not p.name.startswith("."))  # 쓰는 중인 임시 파일은 뺌
 
 
 def delete(key) -> bool:

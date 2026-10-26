@@ -74,6 +74,11 @@ def file_name(master_key: bytes, guild_id: str, user_id: str) -> str:
     return _derive(master_key, "name", str(guild_id), str(user_id), 16).hex()
 
 
+def key_id(master_key: bytes) -> str:
+    """키를 드러내지 않고 '같은 키인지'만 견주는 지문."""
+    return hashlib.blake2b(b"id", key=master_key, digest_size=8).hexdigest()
+
+
 def seal(key: bytes, data: dict) -> dict:
     raw = json.dumps(data, ensure_ascii=False).encode()
     return {"v": 1, "box": base64.b64encode(nacl.secret.SecretBox(key).encrypt(raw)).decode()}

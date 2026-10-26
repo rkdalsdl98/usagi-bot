@@ -9,7 +9,7 @@
 import logging
 import urllib.error
 
-from . import birthdays, config, discord, hachiware, members, memory, storage
+from . import birthdays, config, discord, hachiware, members, memory, storage, vault
 
 log = logging.getLogger(__name__)
 
@@ -21,13 +21,22 @@ def _threads(guild_id: str) -> dict:
 
 
 def forget_person(guild_id: str, user_id: str) -> None:
+    """그 사람의 사람별 기록을 지웁니다. 하나가 실패해도 나머지는 지웁니다 (기억은 키가 멀쩡할 때만, 마지막에)."""
     uid = str(user_id)
-    memory.forget(guild_id, uid)
     birthdays.remove(guild_id, uid)
     hachiware.forget(uid)
     roster = members.load(guild_id)
     if roster.pop(uid, None) is not None:
         members.save(guild_id, roster)
+    _forget_thread(guild_id, uid)
+    if memory.usable():
+        try:
+            memory.forget(guild_id, uid)
+        except (vault.Broken, OSError, ValueError) as e:
+            log.warning("나간 사람의 기억 파일을 못 지움: %s", type(e).__name__)
+
+
+def _forget_thread(guild_id: str, uid: str) -> None:
     record = _threads(guild_id)
     thread = (record.get("usagi") or {}).get(uid)
     if not thread:
@@ -38,6 +47,9 @@ def forget_person(guild_id: str, user_id: str) -> None:
         if e.code != 404:  # 지우지 못했으면 스레드 기록을 남겨 다음 확인 때 다시 지움
             log.warning("1:1 스레드를 못 지움: 스레드 관리 권한을 확인해 주세요 (HTTP %s)", e.code)
             return
+    except OSError as e:  # 연결 오류도 다음 확인 때 다시
+        log.warning("1:1 스레드를 못 지움: %s", type(e).__name__)
+        return
     record["usagi"].pop(uid, None)
     storage.put_json(storage.threads_key(guild_id), record)
 
@@ -62,7 +74,7 @@ def sweep(guild_id: str, member_ids: set, owner_id: str | None) -> int:
     gone = sorted(_known(guild_id) - here)
     for uid in gone:
         forget_person(guild_id, uid)
-    strays = memory.strays(guild_id, here)
+    strays = memory.strays(guild_id, here) if memory.usable() else []  # 다른 키로는 누구 파일인지 모름
     for key in strays:
         storage.delete(key)
     roster = members.load(guild_id)

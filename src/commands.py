@@ -723,7 +723,15 @@ _KIND_NAMES = {"sad": "슬픔", "angry": "화남", "laugh": "웃음", "praise": 
                "bye": "작별", "food": "음식", "agree": "맞장구", "call": "부르기"}
 
 
+def _memory_locked() -> Outcome:
+    out = _game_says("memory_locked", private=True)
+    out.info = "-# 지금은 기억을 열 수 없어요 (기억 열쇠 문제). 서버 관리자에게 알려 주세요."
+    return out
+
+
 def _memory_show(actor, guild_id, **_) -> Outcome:
+    if not memory.usable():
+        return _memory_locked()
     mem = memory.load(guild_id, actor.id)
     if mem == memory.new() or (not mem["last_seen"] and not mem["taught"]):
         return _game_says("memory_none", private=True)
@@ -751,6 +759,8 @@ def _memory_show(actor, guild_id, **_) -> Outcome:
 
 
 def _memory_forget(actor, guild_id, args, **_) -> Outcome:
+    if not memory.usable():
+        return _memory_locked()
     number = args.get("번호")
     if number is None:
         return _game_says("memory_forgot" if memory.forget(guild_id, actor.id) else "memory_none", private=True)

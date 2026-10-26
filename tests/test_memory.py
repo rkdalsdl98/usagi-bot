@@ -96,3 +96,33 @@ def test_food_words_match_whole_words_only():
     mem = memory.new()
     seen(mem, "회의 끝나고 회사 앞에서 치킨이랑 햄버거")
     assert [f for _, f in mem["foods"]] == ["치킨", "햄버거"]  # 회의·회사의 '회', 햄버거 속 '버거' 는 아님
+
+
+def switch_key(tmp_path, monkeypatch, content=None):
+    """마스터 키를 다른 것으로 (잃어버렸거나 다른 곳의 키를 씀). content 를 주면 그 내용의 망가진 키."""
+    path = tmp_path / "other-vault" / "master.key"
+    if content is not None:
+        path.parent.mkdir(parents=True)
+        path.write_bytes(content)
+    monkeypatch.setattr(config, "VAULT_PATH", str(path))
+    vault._cache.clear()
+
+
+def test_key_mismatch_locks_memory(aws, tmp_path, monkeypatch):
+    memory.save("g", "a", memory.new())
+    assert memory.usable() is True
+    switch_key(tmp_path, monkeypatch)  # 버튼 서버와 우사기 봇이 서로 다른 키를 씀
+    assert memory.usable() is False and memory.load("g", "a") == memory.new()
+
+
+def test_broken_master_key_locks_memory(aws, tmp_path, monkeypatch):
+    switch_key(tmp_path, monkeypatch, content=b"short")
+    assert memory.usable() is False and memory.load("g", "a") == memory.new()  # 예외 없음
+
+
+def test_truncated_file_reads_as_empty(aws):
+    import boto3
+
+    memory.save("g", "a", memory.new())
+    boto3.client("s3").put_object(Bucket="lunch-test", Key=memory.key("g", "a"), Body=b'{"v": 1, "bo')
+    assert memory.load("g", "a") == memory.new()

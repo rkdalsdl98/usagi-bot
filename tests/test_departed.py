@@ -108,3 +108,31 @@ def test_kick_forgets_right_away(bot, vault_tmp, monkeypatch):
     bot.kick.fail = None
     bot("추방", "own", "x")
     assert birthdays.get(GUILD, "x") is None and deleted == ["tx"]
+
+
+def test_broken_key_still_clears_the_other_records(world, tmp_path, monkeypatch):
+    from test_memory import switch_key
+
+    switch_key(tmp_path, monkeypatch, content=b"short")
+    departed.forget_person(G, "gone")  # 예외 없음
+    left = records("gone")
+    assert not left["birthday"] and not left["translate"] and not left["rank"] and not left["thread"]
+
+
+def test_sweep_with_another_key_keeps_memory_files(world, tmp_path, monkeypatch):
+    from test_memory import switch_key
+
+    files = storage.list_keys(f"memories/{G}/")
+    switch_key(tmp_path, monkeypatch)
+    departed.sweep(G, {"stay", "walk", "x", "own"}, "own")
+    assert storage.list_keys(f"memories/{G}/") == files  # 다른 키로는 누구 파일인지 몰라서 지우지 않음
+    assert birthdays.get(G, "gone") is None  # 나머지 기록은 지움
+
+
+def test_thread_delete_network_error_is_retried_later(world):
+    def offline(token, channel_id, reason):
+        raise urllib.error.URLError("network down")
+
+    departed.discord.delete_channel = offline
+    departed.forget_person(G, "gone")  # 예외 없음 (/추방 응답이 실패하지 않게)
+    assert records("gone")["thread"] and not records("gone")["birthday"]

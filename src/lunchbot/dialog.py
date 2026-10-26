@@ -5,11 +5,14 @@
 기억이 필요 없는 물음 답하기와 짧은 문맥까지만 합니다. 처음에는 무엇을 기억하는지 안내하고, 그 채팅은 기록하지 않습니다.
 짧은 문맥은 (스레드, 채팅한 사람)마다 메모리에만 둡니다. 디스코드로 보내는 일은 scripts/usagi_bot.py 가 합니다.
 """
+import logging
 import random
 from dataclasses import dataclass
 from datetime import datetime
 
-from . import answers, chat, hachiware, members, memory, storage, talk
+from . import answers, chat, hachiware, members, memory, storage, talk, vault
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -49,7 +52,8 @@ class Dialog:
         if ctx and (now - ctx.at).total_seconds() > talk.CONTEXT_S:  # 오래된 문맥은 버림 (답에도 쓰지 않게)
             ctx = None
         remember = (translating and owner_of(guild_id, thread_id) == author_id
-                    and members.person(author_id, "", members.load(guild_id), owner_id).level >= members.WORKER)
+                    and members.person(author_id, "", members.load(guild_id), owner_id).level >= members.WORKER
+                    and memory.usable())
         mem = memory.load(guild_id, author_id) if remember else None
         outs, first = [], False
 
@@ -89,9 +93,16 @@ class Dialog:
         if remember:
             if not first:
                 memory.observe(mem, text, chat.read(text), now.date())
-            memory.save(guild_id, author_id, mem)
+            _save(guild_id, author_id, mem)
         self._contexts[where] = _next(ctx, turn, reply, remember, now)
         return talked or Talk(outs, plain=False)
+
+
+def _save(guild_id: str, user_id: str, mem: dict) -> None:
+    try:
+        memory.save(guild_id, user_id, mem)
+    except (vault.Broken, OSError, ValueError) as e:  # 못 저장해도 답은 보냄 (누구 것인지는 남기지 않음)
+        log.warning("1:1 기억을 못 저장함: %s", type(e).__name__)
 
 
 def _next(keep: talk.Context | None, turn: talk.Turn, reply, remember: bool, now: datetime) -> talk.Context:
