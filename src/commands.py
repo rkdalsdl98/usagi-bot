@@ -729,32 +729,56 @@ def _memory_locked() -> Outcome:
     return out
 
 
-def _memory_show(actor, guild_id, **_) -> Outcome:
+PAGE = 1900  # 디스코드 메시지 2000자 제한 안에서 한 쪽
+SHOWN = 20  # /기억 보기 에서 한 항목을 보여 주는 글자 수
+
+
+def _short(text: str, n: int = SHOWN) -> str:
+    return text if len(text) <= n else text[: n - 1] + "…"
+
+
+def _pages(lines: list) -> list:
+    """줄들을 PAGE 글자 안의 쪽으로 나눕니다."""
+    pages, page = [], ""
+    for line in lines:
+        if page and len(page) + 1 + len(line) > PAGE:
+            pages.append(page)
+            page = ""
+        page = f"{page}\n{line}" if page else line
+    return pages + [page] if page else pages
+
+
+def _memory_show(actor, guild_id, interaction, **_) -> Outcome:
+    """기억하는 것을 모두 보여 줍니다 (나만 보기). 길면 나만 보는 후속 메시지로 이어서."""
     if not memory.usable():
         return _memory_locked()
     mem = memory.load(guild_id, actor.id)
-    if mem == memory.new() or (not mem["last_seen"] and not mem["taught"]):
+    if not mem["last_seen"] and not mem["taught"]:
         return _game_says("memory_none", private=True)
     lines = ["**우사기가 기억하는 것** (나만 보여요)"]
     if mem["last_seen"]:
         lines.append(f"- 마지막으로 이야기한 날: {mem['last_seen']}")
     if mem["moods"]:
-        lines.append("- 최근 기분: " + ", ".join(f"{d} {_KIND_NAMES.get(k, k)}" for d, k in mem["moods"][-5:]))
+        lines.append("- 최근 기분: " + ", ".join(f"{d} {_KIND_NAMES.get(k, k)}" for d, k in mem["moods"]))
     if mem["topics"]:
-        top = sorted(mem["topics"].items(), key=lambda kv: -kv[1])[:3]
+        top = sorted(mem["topics"].items(), key=lambda kv: -kv[1])
         lines.append("- 자주 하는 이야기: " + ", ".join(f"{_KIND_NAMES.get(k, k)} {n}번" for k, n in top))
     for field, label in (("likes", "좋아한다고 한 것"), ("dislikes", "싫어한다고 한 것")):
         if mem[field]:
-            lines.append(f"- {label}: " + ", ".join(mem[field]))
+            lines.append(f"- {label}: " + ", ".join(_short(x) for x in mem[field]))
     if mem["foods"]:
         lines.append("- 최근 이야기한 음식: " + ", ".join(f"{d} {f}" for d, f in mem["foods"]))
     if mem["taught"]:
         lines.append("**가르쳐 준 것** (`/기억 지우기 [번호]`로 하나씩 지워요)")
         for i, t in enumerate(mem["taught"], 1):
-            meant = f"'{t['answer']}'라고 답하기" if t["kind"] == "answer" else f"{_TOPIC_NAMES.get(t['topic'], t['topic'])} 물음"
-            lines.append(f"{i}. {' '.join(t['words'])} → {meant}")
+            meant = (f"'{_short(t['answer'], 40)}'라고 답하기" if t["kind"] == "answer"
+                     else f"{_TOPIC_NAMES.get(t['topic'], t['topic'])} 물음")
+            lines.append(f"{i}. {_short(' '.join(t['words']))} → {meant}")
+    first, *rest = _pages(lines)
     out = _game_says("memory_shown", private=True)
-    out.info = "\n".join(lines)
+    out.info = first
+    app, token = interaction["application_id"], interaction["token"]
+    out.later = [lambda page=page: discord.followup(app, token, page) for page in rest]  # 나만 보기 (ephemeral)
     return out
 
 

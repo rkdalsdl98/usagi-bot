@@ -115,3 +115,28 @@ def test_memory_commands_when_locked(team, tmp_path, monkeypatch):
         body = call(command, "work")
         content = body["data"]["content"]
         assert body["data"]["flags"] == 64 and "열 수 없" in content and "아직 기억한 게 없어" not in content
+
+
+def test_memory_show_fits_discord_and_shows_everything(team):
+    mem = memory.new()
+    mem["last_seen"] = "2026-10-26"
+    mem["moods"] = [[f"2026-10-{d:02d}", "sad"] for d in range(10, 20)]
+    mem["topics"] = {k: i + 1 for i, k in enumerate(("greet", "bye", "praise", "laugh", "sad", "angry", "food",
+                                                     "surprise", "agree", "call"))}
+    mem["likes"] = [f"좋아하는것{i:02d}" + "가" * 30 for i in range(20)]
+    mem["dislikes"] = [f"싫어하는것{i:02d}" + "나" * 30 for i in range(20)]
+    mem["foods"] = [[f"2026-10-{d:02d}", "라멘"] for d in range(20, 25)]
+    mem["taught"] = [{"words": [f"말{i}", "가" * 40], "kind": "answer", "answer": "다" * 100, "at": "2026-10-26"}
+                     for i in range(50)]
+    memory.save(GUILD, "work", mem)
+    n = len(team.followed)
+    body = call("기억 보기", "work")
+    extra = [text for _, _, text, private in team.followed[n:] if private]
+    assert len(team.followed[n:]) == len(extra)  # 이어지는 것도 나만 보기
+    pages = [body["data"]["content"]] + extra
+    assert all(len(p) <= 2000 for p in pages)
+    shown = "\n".join(pages)
+    assert all(f"\n{i}. " in shown for i in range(1, 51))  # 지울 번호가 모두 보임
+    assert all(f"2026-10-{d:02d}" in shown for d in range(10, 20))  # 최근 기분 모두
+    assert all(f"좋아하는것{i:02d}" in shown and f"싫어하는것{i:02d}" in shown for i in range(20))
+    assert "부르기" in shown and "인사" in shown  # 자주 하는 이야기 모두
