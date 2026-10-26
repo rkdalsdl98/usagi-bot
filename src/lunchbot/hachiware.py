@@ -340,6 +340,12 @@ NOTICES = {
     "bday_bad": [[("puzzled", "응?"), ("sulky", "그런 날짜는 없어…")]],
     "bday_removed": [[("sulky", "생일…"), ("sulky", "지웠어…")]],
     "bday_none": [[("puzzled", "응?"), ("sulky", "적힌 생일이 없어…")]],
+    # 1:1 대화 기억 (/기억, 나만 보기)
+    "memory_shown": [[("happy", "이만큼~"), ("excited", "기억하고 있어!")]],
+    "memory_none": [[("puzzled", "응?"), ("sulky", "아직 기억한 게 없어…")]],
+    "memory_forgot": [[("sulky", "기억…"), ("sulky", "다 지웠어…")]],
+    "memory_forgot_one": [[("happy", "{n}번!"), ("sulky", "잊어버렸어…")]],
+    "memory_bad_number": [[("puzzled", "응?"), ("sulky", "그런 번호는 없어…")]],
     "usagi_thread": [[("excited", "{thread}!"), ("happy", "거기서 기다릴게~")],
                      [("happy", "둘이서 놀자~"), ("excited", "{thread}로 와!")]],
     "thread_failed": [[("puzzled", "어?"), ("sulky", "스레드를 못 만들었어…"), ("sulky", "'비공개 스레드 만들기' 권한 문제…")]],

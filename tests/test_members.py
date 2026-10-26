@@ -21,12 +21,14 @@ def test_rank_names_in_order():
 
 
 def test_who_can_use_which_command():
-    everyone = ["도움", "우사기", "점심 추천", "저녁 추천", "하치와레 번역 켜기", "하치와레 번역 끄기", "생일 등록", "생일 지우기",
+    everyone = ["도움", "점심 추천", "저녁 추천", "하치와레 번역 켜기", "하치와레 번역 끄기", "생일 등록", "생일 지우기",
                 "게임 시작", "게임 답", "게임 결과", "게임 점수", "게임 끝"]
     assert members.allowed(0) == everyone
     assert members.allowed(WALKER) == everyone + ["멤버추가"]
-    assert members.allowed(WORKER) == members.allowed(CAPTAIN) == everyone + [
+    # /우사기(1:1 스레드)와 /기억 은 직장인 갑옷씨부터
+    assert members.allowed(WORKER) == members.allowed(CAPTAIN) == ["도움", "우사기", "기억 보기", "기억 지우기"] + everyone[1:] + [
         "멤버추가", "멤버승급", "멤버강등", "멤버삭제", "추방", "전체번역 켜기", "전체번역 끄기"]
+    assert members.check("우사기", WALK) == members.check("기억 보기", NOBODY) == "rank_low"
     assert members.check("전체번역 켜기", WALK) == "rank_low"  # 서버 전체 번역은 직장인 갑옷씨부터
     for command in everyone:
         assert members.check(command, NOBODY) is None

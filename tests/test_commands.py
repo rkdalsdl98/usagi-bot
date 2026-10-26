@@ -264,12 +264,14 @@ def test_help_lists_what_your_rank_can_use(bot):
     _, said = bot("도움", "x")
     assert "아직 멤버가 아니야" in said
     assert "`/점심 추천`" in said and "`/하치와레 번역 켜기`" in said and "`/멤버추가 [사람]`" not in said
+    assert "`/우사기`" not in said and "/기억" not in said  # 1:1 스레드와 기억은 직장인 갑옷씨부터
     assert "멤버한테 `/멤버추가`를 부탁해" in said  # 멤버가 되는 법
     bot("멤버추가", "own", "walk")
     _, said = bot("도움", "walk")
     assert "**행인 갑옷씨**" in said and "`/멤버추가 [사람]`" in said and "/추방" not in said
     _, said = bot("도움", "own")
     assert "**대장 갑옷씨**" in said and "`/추방 [사람]`" in said and "`/멤버승급 [사람] [등급]`" in said
+    assert "`/우사기`" in said and "`/기억 보기`" in said and "`/기억 지우기 [번호]`" in said
     assert "1:1 스레드 번역은 켜져 있고" in said and "채널 번역(메뉴 추천 포함)은 켜져 있어" in said
 
 
@@ -334,46 +336,63 @@ def test_unknown_command(bot):
 
 
 
-def test_usagi_opens_a_private_thread(bot):
-    body, said = bot("우사기", "x")
-    assert bot.threads["made"] == [(HERE, "우사기 · 손님")]  # 우사기 채널 아래 비공개 스레드
-    assert bot.threads["added"] == [("t1", "x")]  # 그 사람만 넣음
+@pytest.fixture
+def workers(bot):
+    members.save(GUILD, {"work": {"rank": members.WORKER}, "cap": {"rank": members.CAPTAIN}})
+    return bot
+
+
+def test_usagi_needs_worker(bot):
+    bot("멤버추가", "own", "walk")
+    for who in ("x", "walk"):  # 멤버가 아니거나 행인 갑옷씨면 1:1 스레드를 못 엶
+        _, said = bot("우사기", who)
+        assert "직장인 갑옷씨" in said and bot.threads["made"] == []
+
+
+def test_usagi_opens_a_private_thread(workers):
+    bot = workers
+    body, said = bot("우사기", "work")
+    assert bot.threads["made"] == [(HERE, "우사기 · 직장인")]  # 우사기 채널 아래 비공개 스레드
+    assert bot.threads["added"] == [("t1", "work")]  # 그 사람만 넣음
     assert "<#t1>" in said  # 하치와레가 스레드로 안내
     # 응답 뒤: 스레드에 우사기가 인사하며 그 사람을 부름 (알림이 가서 스레드를 찾게)
     greet = [p for c, p in bot.posted if c == "t1"]
-    assert len(greet) == 1 and greet[0]["content"].startswith("<@x> ")
-    assert greet[0]["allowed_mentions"] == {"users": ["x"]}
+    assert len(greet) == 1 and greet[0]["content"].startswith("<@work> ")
+    assert greet[0]["allowed_mentions"] == {"users": ["work"]}
     # 번역이 켜져 있으면 하치와레가 그 스레드에 번역 (우사기 채널 웹훅 + thread_id)
     assert bot.hooked[-1][0] == HOOK + "?thread_id=t1"
 
 
-def test_usagi_reuses_your_thread(bot):
-    bot("우사기", "x")
+def test_usagi_reuses_your_thread(workers):
+    bot = workers
+    bot("우사기", "work")
     bot.threads["info"]["t1"]["thread_metadata"]["archived"] = True  # 오래 조용해서 보관됨
-    _, said = bot("우사기", "x")
+    _, said = bot("우사기", "work")
     assert len(bot.threads["made"]) == 1 and bot.threads["unarchived"] == ["t1"] and "<#t1>" in said
-    bot("우사기", "y")  # 다른 사람은 따로
-    assert bot.threads["made"][-1] == (HERE, "우사기 · 손님2")
+    bot("우사기", "cap")  # 다른 사람은 따로
+    assert bot.threads["made"][-1] == (HERE, "우사기 · 대장")
     del bot.threads["info"]["t1"]  # 누가 스레드를 지웠으면 새로 만듦
-    _, said = bot("우사기", "x")
+    _, said = bot("우사기", "work")
     assert len(bot.threads["made"]) == 3 and "<#t3>" in said
 
 
-def test_usagi_thread_without_translation(bot):
+def test_usagi_thread_without_translation(workers):
+    bot = workers
     hachiware.turn(False, "테스트")
-    body = raw("우사기", "x")
+    body = raw("우사기", "work")
     assert "\n" not in body["data"]["content"]  # 우사기 소리만
     greet = [p for c, p in bot.posted if c == "t1"]
-    assert greet and greet[0]["content"].startswith("<@x> ")  # 스레드 인사는 그대로 (알림)
+    assert greet and greet[0]["content"].startswith("<@work> ")  # 스레드 인사는 그대로 (알림)
     assert not [u for u, _ in bot.hooked if "thread_id" in u]  # 하치와레는 조용
 
 
-def test_usagi_thread_problems(bot, monkeypatch):
+def test_usagi_thread_problems(workers, monkeypatch):
+    bot = workers
     bot.threads["fail"] = 403  # 봇에 스레드 권한이 없음
-    _, said = bot("우사기", "x")
+    _, said = bot("우사기", "work")
     assert "스레드" in said and bot.threads["made"] == []
     monkeypatch.setattr(config, "USAGI_CHANNEL_ID", "")
-    _, said = bot("우사기", "x")
+    _, said = bot("우사기", "work")
     assert "USAGI_CHANNEL_ID" in said
 
 

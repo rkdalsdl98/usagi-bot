@@ -32,7 +32,7 @@ import random
 import urllib.error
 from dataclasses import dataclass, field
 
-from lunchbot import birthdays, config, discord, game, hachiware, inbox, meals, members, messages, roles, storage
+from lunchbot import birthdays, config, discord, game, hachiware, inbox, meals, members, memory, messages, roles, storage
 import recommend
 
 log = logging.getLogger()
@@ -55,8 +55,8 @@ def _text(name: str, description: str, max_length: int) -> dict:
     return {"type": STRING, "name": name, "description": description, "required": True, "max_length": max_length}
 
 
-def _int(name: str, description: str, low: int, high: int) -> dict:
-    return {"type": INTEGER, "name": name, "description": description, "required": True,
+def _int(name: str, description: str, low: int, high: int, required: bool = True) -> dict:
+    return {"type": INTEGER, "name": name, "description": description, "required": required,
             "min_value": low, "max_value": high}
 
 
@@ -70,6 +70,11 @@ def _sub(name: str, description: str, *options) -> dict:
 DEFINITIONS = [
     {"name": "도움", "description": "내 등급으로 쓸 수 있는 우사기 명령과 사용법을 하치와레가 알려 줘요", "contexts": [0]},
     {"name": "우사기", "description": "나와 우사기 봇만 있는 비공개 스레드에서 1:1로 대화해요", "contexts": [0]},
+    {"name": "기억", "description": "1:1 대화에서 우사기가 나에 대해 기억하는 것 (나만 보여요)", "contexts": [0], "options": [
+        _sub("보기", "우사기가 나에 대해 기억하는 것과 내가 가르친 것을 봐요"),
+        _sub("지우기", "가르친 것 하나를 지우거나, 번호를 비우면 기억을 전부 지워요",
+             _int("번호", "지울 가르친 것 번호 (비우면 전부 지워요)", 1, 50, required=False)),
+    ]},
     {"name": "점심", "description": "점심 메뉴", "contexts": [0],
      "options": [_sub("추천", "오점뭐 채널에 점심 메뉴 5곳을 추천해요")]},
     {"name": "저녁", "description": "저녁 메뉴", "contexts": [0],
@@ -109,6 +114,8 @@ DEFINITIONS = [
 USAGE = {
     "도움": ("/도움", "쓸 수 있는 명령과 사용법 보기"),
     "우사기": ("/우사기", "나와 우사기만 있는 비공개 스레드에서 1:1 대화"),
+    "기억 보기": ("/기억 보기", "1:1 대화에서 우사기가 나에 대해 기억하는 것 보기 (나만 보여요)"),
+    "기억 지우기": ("/기억 지우기 [번호]", "가르친 것 하나, 또는 번호 없이 기억 전부 지우기 (나만 보여요)"),
     "점심 추천": ("/점심 추천", "오점뭐에 점심 메뉴 추천 보내기"),
     "저녁 추천": ("/저녁 추천", "오저뭐에 야근 저녁 메뉴 추천 보내기"),
     "하치와레 번역 켜기": ("/하치와레 번역 켜기", "내 /우사기 1:1 스레드에서 하치와레가 번역"),
@@ -281,14 +288,37 @@ def _set_rank(actor, target, rank, roster, guild_id, interaction, **_) -> Outcom
     up = rank > target.level
     roster[target.id] = {**roster.get(target.id, {}), "rank": rank, "name": target.name, **_stamp(actor)}
     members.save(guild_id, roster)
-    return _said("promoted" if up else "demoted", later=[_role_job(guild_id, target.id, rank, interaction)],
-                 target=_mention(target), new=f"**{members.RANKS[rank]}**")
+    later = [_role_job(guild_id, target.id, rank, interaction)] + _leave_thread_jobs(guild_id, target.id, rank)
+    return _said("promoted" if up else "demoted", later=later, target=_mention(target),
+                 new=f"**{members.RANKS[rank]}**")
 
 
 def _remove(target, roster, guild_id, interaction, **_) -> Outcome:
     roster.pop(target.id, None)
     members.save(guild_id, roster)
-    return _said("removed", later=[_role_job(guild_id, target.id, 0, interaction)], target=_mention(target))
+    later = [_role_job(guild_id, target.id, 0, interaction)] + _leave_thread_jobs(guild_id, target.id, 0)
+    return _said("removed", later=later, target=_mention(target))
+
+
+def _leave_thread_jobs(guild_id: str, user_id: str, level: int) -> list:
+    """직장인 갑옷씨 아래가 되면 응답 뒤에 1:1 스레드에서 내보냅니다 (기억과 스레드 기록은 그대로 둠).
+
+    공개 답에는 스레드 이야기를 하지 않습니다 (그 사람이 1:1 을 썼는지 드러나지 않게).
+    """
+    if level >= members.NEEDS["우사기"]:
+        return []
+    thread = ((storage.get_json(storage.threads_key(guild_id)) or {}).get("usagi") or {}).get(user_id)
+    if not thread:
+        return []
+
+    def run():
+        try:
+            discord.remove_thread_member(config.DISCORD_BOT_TOKEN, thread, user_id)
+        except urllib.error.HTTPError as e:
+            if e.code != 404:  # 이미 없으면 그대로
+                log.warning("1:1 스레드에서 못 내보냄: HTTP %s", e.code)
+
+    return [run]
 
 
 def _kick(actor, target, roster, guild_id, **_) -> Outcome:
@@ -681,6 +711,52 @@ def _birthday_set(actor, guild_id, args, **_) -> Outcome:
     return _birthday_saved(guild_id, actor, int(args["월"]), int(args["일"]))
 
 
+# ── 1:1 대화 기억 (lunchbot/memory.py, 나만 보기) ──
+
+_TOPIC_NAMES = {"lunch": "오늘 점심", "dinner": "오늘 저녁", "last": "지난번 고른 곳", "birthday": "내 생일",
+                "game": "게임 점수", "rank": "내 등급", "time": "지금 시각", "off": "퇴근까지", "usagi": "우사기",
+                "hachiware": "하치와레", "me": "나", "talk": "마지막 대화", "bored": "심심할 때",
+                "tired": "힘들 때", "food": "뭐 먹을지", "place": "그 식당"}
+_KIND_NAMES = {"sad": "슬픔", "angry": "화남", "laugh": "웃음", "praise": "칭찬", "surprise": "놀람", "greet": "인사",
+               "bye": "작별", "food": "음식", "agree": "맞장구", "call": "부르기"}
+
+
+def _memory_show(actor, guild_id, **_) -> Outcome:
+    mem = memory.load(guild_id, actor.id)
+    if mem == memory.new() or (not mem["last_seen"] and not mem["taught"]):
+        return _game_says("memory_none", private=True)
+    lines = ["**우사기가 기억하는 것** (나만 보여요)"]
+    if mem["last_seen"]:
+        lines.append(f"- 마지막으로 이야기한 날: {mem['last_seen']}")
+    if mem["moods"]:
+        lines.append("- 최근 기분: " + ", ".join(f"{d} {_KIND_NAMES.get(k, k)}" for d, k in mem["moods"][-5:]))
+    if mem["topics"]:
+        top = sorted(mem["topics"].items(), key=lambda kv: -kv[1])[:3]
+        lines.append("- 자주 하는 이야기: " + ", ".join(f"{_KIND_NAMES.get(k, k)} {n}번" for k, n in top))
+    for field, label in (("likes", "좋아한다고 한 것"), ("dislikes", "싫어한다고 한 것")):
+        if mem[field]:
+            lines.append(f"- {label}: " + ", ".join(mem[field]))
+    if mem["foods"]:
+        lines.append("- 최근 이야기한 음식: " + ", ".join(f"{d} {f}" for d, f in mem["foods"]))
+    if mem["taught"]:
+        lines.append("**가르쳐 준 것** (`/기억 지우기 [번호]`로 하나씩 지워요)")
+        for i, t in enumerate(mem["taught"], 1):
+            meant = f"'{t['answer']}'라고 답하기" if t["kind"] == "answer" else f"{_TOPIC_NAMES.get(t['topic'], t['topic'])} 물음"
+            lines.append(f"{i}. {' '.join(t['words'])} → {meant}")
+    out = _game_says("memory_shown", private=True)
+    out.info = "\n".join(lines)
+    return out
+
+
+def _memory_forget(actor, guild_id, args, **_) -> Outcome:
+    number = args.get("번호")
+    if number is None:
+        return _game_says("memory_forgot" if memory.forget(guild_id, actor.id) else "memory_none", private=True)
+    if memory.forget_taught(guild_id, actor.id, int(number)):
+        return _game_says("memory_forgot_one", private=True, n=number)
+    return _game_says("memory_bad_number", private=True)
+
+
 def _birthday_remove(actor, guild_id, **_) -> Outcome:
     return _game_says("bday_removed" if birthdays.remove(guild_id, actor.id) else "bday_none", private=True)
 
@@ -688,6 +764,8 @@ def _birthday_remove(actor, guild_id, **_) -> Outcome:
 RUN = {
     "도움": _help,
     "우사기": _usagi,
+    "기억 보기": _memory_show,
+    "기억 지우기": _memory_forget,
     "점심 추천": _recommend(meals.LUNCH),
     "저녁 추천": _recommend(meals.DINNER),
     "하치와레 번역 켜기": _translate(True),

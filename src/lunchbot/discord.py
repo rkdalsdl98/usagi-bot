@@ -260,6 +260,11 @@ def add_thread_member(bot_token: str, thread_id: str, user_id: str) -> None:
     _api_send(bot_token, "PUT", f"/channels/{thread_id}/thread-members/{user_id}")
 
 
+def remove_thread_member(bot_token: str, thread_id: str, user_id: str) -> None:
+    """스레드에서 내보냅니다 (봇이 만든 비공개 스레드라 봇이 할 수 있음). 이미 없으면 HTTP 404."""
+    _api_send(bot_token, "DELETE", f"/channels/{thread_id}/thread-members/{user_id}")
+
+
 def unarchive_thread(bot_token: str, thread_id: str) -> None:
     _api_send(bot_token, "PATCH", f"/channels/{thread_id}", {"archived": False})
 
