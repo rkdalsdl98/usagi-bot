@@ -1,6 +1,8 @@
 """우사기 채널 봇: 디스코드에 계속 연결해 두고, 우사기 채널에 사람이 채팅을 보내면 우사기 소리로 답합니다.
 
-우사기 채널 아래 스레드(/우사기 로 만든 1:1 비공개 스레드)의 채팅에도 같은 방식으로 답합니다.
+우사기 채널 아래 스레드(/우사기 로 만든 1:1 비공개 스레드)에서는 대화 기억(lunchbot/dialog.py)으로 답합니다:
+물음의 의도에 맞춰 봇이 아는 정보로 답하고, 앞 문맥을 잇고, 그 사람의 기억(암호화)과 가르쳐 준 것을 씁니다.
+1:1 스레드 대화는 로그에 남기지 않습니다 (채팅 내용·이름·우사기 소리·하치와레 말 모두).
 
 버튼 처리(serve_local.py)는 디스코드가 우리 주소로 요청을 보내 주지만, 일반 채팅은 그렇게 받을 수 없어서
 디스코드 게이트웨이(웹소켓)에 계속 붙어 있어야 합니다. 그래서 항상 켜 두는 서버로 띄웁니다 (docker compose 의 usagi).
@@ -39,7 +41,7 @@ local_env.load()
 sys.path.insert(0, str(local_env.ENV_FILE.parent / "src"))
 import local_storage  # noqa: E402  (.env 의 LOCAL_S3_DIR 을 읽도록 load 뒤에 import)
 import discord  # noqa: E402  (pip 의 discord.py 라이브러리. 우리 코드의 lunchbot.discord 와는 다른 것)
-from lunchbot import birthdays, chat, config, hachiware  # noqa: E402
+from lunchbot import birthdays, chat, config, dialog, hachiware  # noqa: E402
 from lunchbot import discord as discord_api  # noqa: E402
 
 GATHER_S = 1.5  # 이만큼 새 채팅이 없으면 다 보낸 것으로 보고 답합니다
@@ -51,6 +53,8 @@ waiting: dict = {}  # 채널 id → 답하려고 모으는 중인 채팅
 last_reply: dict = {}  # 채널 id → 바로 전에 한 답 (되풀이하지 않게)
 last_translation: dict = {}  # 채널 id → 하치와레의 바로 전 번역
 hachiware_url = ""  # 우사기 채널 웹훅인지 확인한 뒤 main 에서 정함
+talks = dialog.Dialog()  # 1:1 스레드 대화 (짧은 문맥은 사람마다 메모리에만)
+QUIET = discord.AllowedMentions.none()  # 1:1 스레드에서는 누구도 부르지 않음
 
 
 async def handle(message):
@@ -73,33 +77,76 @@ async def handle(message):
     await answer(batch)
 
 
-async def answer(batch):
-    channel, target = batch[-1].channel, batch[-1]
-    text = "\n".join(m.content for m in batch)
-    steps = chat.plan(text, last=last_reply.get(channel.id))
-    last_reply[channel.id] = steps[0].text
+async def _say(channel, steps, target=None, **kw) -> None:
+    """우사기 답을 '입력 중…' 뒤에 보냅니다 (답장 표시를 달 때도)."""
     for step in steps:
         async with channel.typing():
             await asyncio.sleep(step.delay)
-        if step.quote:
-            await target.reply(step.text, mention_author=False)
+        if step.quote and target is not None:
+            await target.reply(step.text, mention_author=False, **kw)
         else:
-            await channel.send(step.text)
+            await channel.send(step.text, **kw)
+
+
+async def answer(batch):
+    channel, target = batch[-1].channel, batch[-1]
+    if getattr(channel, "parent_id", None):  # 1:1 스레드는 따로 (기억·로그 없음)
+        await answer_in_thread(batch)
+        return
+    text = "\n".join(m.content for m in batch)
+    steps = chat.plan(text, last=last_reply.get(channel.id))
+    last_reply[channel.id] = steps[0].text
+    await _say(channel, steps, target)
     log.info("%s 의 채팅 %d개에 답함: %s", target.author.display_name, len(batch), " / ".join(s.text for s in steps))
-    in_thread = bool(getattr(channel, "parent_id", None))
-    # 모두가 보는 우사기 채널은 서버 전체 설정, 1:1 스레드는 채팅한 사람(여럿이면 마지막 사람)의 개인 설정
-    if hachiware_url and translating(target.author.id if in_thread else None):
-        await translate(channel.id, text, " ".join(s.text for s in steps), target.author.display_name, in_thread)
+    if hachiware_url and translating():  # 모두가 보는 우사기 채널은 서버 전체 설정
+        await translate(channel.id, text, " ".join(s.text for s in steps), target.author.display_name)
 
 
-async def translate(channel_id, text: str, usagi: str, name: str, in_thread: bool = False):
-    """하치와레가 우사기 말을 번역해 웹훅으로 올립니다 (스레드면 그 스레드에). 실패해도 우사기 답에는 영향이 없습니다."""
+async def answer_in_thread(batch):
+    """1:1 스레드: 대화 기억(lunchbot/dialog.py)으로 답합니다.
+
+    스레드 대화는 어디에도 남기지 않으므로 로그도 남기지 않습니다 (채팅 내용·이름·우사기 소리·하치와레 말 모두).
+    실패하면 무슨 종류의 오류인지만 남깁니다. 번역은 채팅한 사람의 개인 설정을 따릅니다.
+    """
+    channel, target = batch[-1].channel, batch[-1]
+    text = "\n".join(m.content for m in batch)
+    try:
+        on = bool(hachiware_url) and translating(target.author.id)
+        guild = channel.guild
+        talk = await asyncio.to_thread(
+            talks.respond, guild_id=str(guild.id), thread_id=str(channel.id), author_id=str(target.author.id),
+            owner_id=str(guild.owner_id) if guild.owner_id else None, text=text, now=config.now_kst(), translating=on)
+        for out in talk.outs:
+            await _say(channel, [chat.Step(out.sound, chat._typing(text, out.sound, random), quote=False)],
+                       allowed_mentions=QUIET)
+            if out.hachiware:
+                await _hachiware_in_thread(channel.id, out.hachiware)
+        if talk.plain:
+            steps = chat.plan(text, last=last_reply.get(channel.id))
+            last_reply[channel.id] = steps[0].text
+            await _say(channel, steps, target, allowed_mentions=QUIET)
+            if on:
+                usagi = " ".join(s.text for s in steps)
+                line = hachiware.translate(chat.read(text), usagi, name=target.author.display_name,
+                                           last=last_translation.get(channel.id))
+                last_translation[channel.id] = line
+                await _hachiware_in_thread(channel.id, f"{line} {talk.remark}" if talk.remark else line)
+    except Exception as e:  # 내용이 들어갈 수 있는 오류 문구는 남기지 않음
+        log.warning("1:1 스레드 답을 못 보냄: %s", type(e).__name__)
+
+
+async def _hachiware_in_thread(thread_id, line: str) -> None:
+    await asyncio.sleep(random.uniform(*HACHIWARE_DELAY_S))
+    await asyncio.to_thread(discord_api.execute_webhook, f"{hachiware_url}?thread_id={thread_id}", line)
+
+
+async def translate(channel_id, text: str, usagi: str, name: str):
+    """하치와레가 우사기 채널에서 우사기 말을 번역해 웹훅으로 올립니다. 실패해도 우사기 답에는 영향이 없습니다."""
     await asyncio.sleep(random.uniform(*HACHIWARE_DELAY_S))
     line = hachiware.translate(chat.read(text), usagi, name=name, last=last_translation.get(channel_id))
     last_translation[channel_id] = line
-    url = f"{hachiware_url}?thread_id={channel_id}" if in_thread else hachiware_url
     try:
-        await asyncio.to_thread(discord_api.execute_webhook, url, line)
+        await asyncio.to_thread(discord_api.execute_webhook, hachiware_url, line)
     except OSError as e:  # 오류 문구에는 웹훅 주소(토큰)가 들어가지 않음
         log.warning("하치와레 번역을 못 보냄: %s", e)
         return
