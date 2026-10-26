@@ -470,8 +470,9 @@ def _remind_all_add(actor, guild_id, args, interaction, **_) -> Outcome:
     except reminders.RemindError as e:
         return _game_says(f"remind_{e}", private=True, n=reminders.LIMIT)
     out = _game_says("remind_all_saved", date=reminders._clock(at))
-    out.info = (f"-# {actor.name} 님이 건 전체 리마인드: \"{item['text']}\" — {reminders._clock(at)}에 이곳에서 하치와레가 "
-                "모두를 불러요. 목록은 `/전체리마인드목록`.")
+    out.notice = f"{out.notice} 알릴 거: \"{item['text']}\""  # 하치와레 말에도 내용
+    out.info = (f"📢 **전체 리마인드** {reminders._clock(at)} — \"{item['text']}\" ({actor.name} 님이 걸어 둠)\n"
+                "-# 그 시각에 이곳에서 하치와레가 모두를 불러요. 목록은 `/전체리마인드목록`.")  # 모두가 잘 보이게 보통 글로
     return out
 
 
