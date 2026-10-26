@@ -1,5 +1,6 @@
 """환경 변수와 공통 상수."""
 import os
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 # 한국은 서머타임이 없어서 고정 오프셋으로 충분합니다.
@@ -32,6 +33,8 @@ DINNER_EXCLUDE_CATEGORIES = _categories("DINNER_EXCLUDE_CATEGORIES", "간식,구
 
 # 우사기 채널: 사람이 채팅을 보내면 우사기 봇이 채팅 내용에 맞춰 우사기 소리로 답합니다 (scripts/usagi_bot.py)
 USAGI_CHANNEL_ID = os.environ.get("USAGI_CHANNEL_ID", "")
+# 1:1 대화 기억을 잠그는 마스터 키 (프로젝트 폴더·.local-s3·.env 밖. 도커에서는 usagi-vault 볼륨의 /vault/master.key)
+VAULT_PATH = os.environ.get("VAULT_PATH", str(Path.home() / ".lunchbot-vault" / "master.key"))
 # 하치와레 웹훅 주소들 (쉼표로 구분). 웹훅은 채널마다 따로라, 하치와레가 말할 채널마다 하나씩 만듭니다.
 # 우사기 채널 웹훅이 있으면 우사기 말을 번역하고, 명령을 쓴 채널의 웹훅으로 안내합니다.
 # HACHIWARE_WEBHOOK_URL (하나) 도 예전처럼 읽습니다.
