@@ -154,9 +154,14 @@ def send_message(bot_token: str, channel_id: str, payload: dict) -> dict:
         return json.load(res)
 
 
-def execute_webhook(webhook_url: str, content: str, users: list | None = None) -> dict:
-    """웹훅으로 글을 보냅니다 (하치와레). 웹훅 주소 안의 토큰으로 보내고, 멘션 알림은 users 에게만 보냅니다 (기본 없음)."""
-    mentions = {"parse": [], "users": [str(u) for u in users]} if users else {"parse": []}
+def execute_webhook(webhook_url: str, content: str, users: list | None = None, everyone: bool = False) -> dict:
+    """웹훅으로 글을 보냅니다 (하치와레). 웹훅 주소 안의 토큰으로 보내고, 멘션 알림은 users 에게만 보냅니다 (기본 없음).
+
+    everyone 이면 @everyone 으로 모두를 부릅니다 (전체 리마인드).
+    """
+    mentions = {"parse": ["everyone"] if everyone else []}
+    if users:
+        mentions["users"] = [str(u) for u in users]
     req = urllib.request.Request(
         f"{webhook_url}{'&' if '?' in webhook_url else '?'}wait=true",
         data=json.dumps({"content": content, "allowed_mentions": mentions}, ensure_ascii=False).encode("utf-8"),

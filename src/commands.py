@@ -81,6 +81,15 @@ DEFINITIONS = [
         _int("월", "몇 월 (비우면 이번 달)", 1, 12, required=False), _int("일", "며칠 (비우면 오늘)", 1, 31, required=False),
     ]},
     {"name": "리마인드목록", "description": "내가 걸어 둔 리마인드를 봐요 (나만 보여요)", "contexts": [0]},
+    {"name": "전체리마인드", "description": "정한 시각에 하치와레가 이 채널에서 모두(@everyone)를 불러 알려 줘요",
+     "contexts": [0], "options": [
+        _text("내용", "모두에게 알릴 내용", reminders.TEXT_CHARS), _int("시간", "몇 시 (0~23)", 0, 23),
+        _int("분", "몇 분 (0~59)", 0, 59), _int("년", "몇 년 (비우면 올해)", _YEAR, _YEAR + 5, required=False),
+        _int("월", "몇 월 (비우면 이번 달)", 1, 12, required=False), _int("일", "며칠 (비우면 오늘)", 1, 31, required=False),
+    ]},
+    {"name": "전체리마인드목록", "description": "걸려 있는 전체 리마인드를 봐요 (나만 보여요)", "contexts": [0]},
+    {"name": "전체리마인드취소", "description": "전체 리마인드 하나를 지워요 (건 사람이나 대장 갑옷씨)", "contexts": [0],
+     "options": [_int("번호", "지울 전체 리마인드 번호 (/전체리마인드목록)", 1, reminders.LIMIT)]},
     {"name": "리마인드취소", "description": "리마인드 하나를 지워요 (번호는 /리마인드목록)", "contexts": [0], "options": [
         _int("번호", "지울 리마인드 번호", 1, reminders.LIMIT)]},
     {"name": "기억", "description": "1:1 대화에서 우사기가 나에 대해 기억하는 것 (나만 보여요)", "contexts": [0], "options": [
@@ -130,6 +139,9 @@ USAGE = {
     "리마인드": ("/리마인드 [내용] [시간] [분] [년] [월] [일]", "정한 시각에 하치와레가 1:1 스레드에서 알려 줌 (년·월·일은 비우면 오늘)"),
     "리마인드목록": ("/리마인드목록", "내가 걸어 둔 리마인드 보기 (나만 보여요)"),
     "리마인드취소": ("/리마인드취소 [번호]", "리마인드 하나 지우기 (번호는 /리마인드목록)"),
+    "전체리마인드": ("/전체리마인드 [내용] [시간] [분] [년] [월] [일]", "정한 시각에 하치와레가 이 채널에서 모두를 불러 알려 줌"),
+    "전체리마인드목록": ("/전체리마인드목록", "걸려 있는 전체 리마인드 보기 (나만 보여요)"),
+    "전체리마인드취소": ("/전체리마인드취소 [번호]", "전체 리마인드 하나 지우기 (건 사람이나 대장 갑옷씨)"),
     "기억 보기": ("/기억 보기", "1:1 대화에서 우사기가 나에 대해 기억하는 것 보기 (나만 보여요)"),
     "기억 지우기": ("/기억 지우기 [번호]", "가르친 것 하나, 또는 번호 없이 기억 전부 지우기 (나만 보여요)"),
     "점심 추천": ("/점심 추천", "오점뭐에 점심 메뉴 추천 보내기"),
@@ -444,6 +456,46 @@ def _remind_list(actor, guild_id, **_) -> Outcome:
     lines = [f"{i}. {reminders._clock(datetime.fromisoformat(r['at']))} — {r['text']}" for i, r in enumerate(items, 1)]
     out.info = "\n".join(["**걸어 둔 리마인드** (나만 보여요, `/리마인드취소 [번호]`로 지워요)"] + lines)
     return out
+
+
+def _remind_all_add(actor, guild_id, args, interaction, **_) -> Outcome:
+    """모두에게: 이 채널(스레드)에서 하치와레가 걸었다고 알리고, 그 시각에 @everyone 으로 부름 (번역 설정과 상관없이)."""
+    if not memory.usable():
+        return _game_says("remind_locked", private=True)
+    hook_channel, thread, _ = _place(interaction)
+    now = config.now_kst()
+    try:
+        at = reminders.when(now, int(args["시간"]), int(args["분"]), args.get("년"), args.get("월"), args.get("일"))
+        item = reminders.add_all(guild_id, actor.id, actor.name, hook_channel, thread, args.get("내용", ""), at, now)
+    except reminders.RemindError as e:
+        return _game_says(f"remind_{e}", private=True, n=reminders.LIMIT)
+    out = _game_says("remind_all_saved", date=reminders._clock(at))
+    out.info = (f"-# {actor.name} 님이 건 전체 리마인드: \"{item['text']}\" — {reminders._clock(at)}에 이곳에서 하치와레가 "
+                "모두를 불러요. 목록은 `/전체리마인드목록`.")
+    return out
+
+
+def _remind_all_list(guild_id, **_) -> Outcome:
+    if not memory.usable():
+        return _game_says("remind_locked", private=True)
+    items = reminders.everyone(guild_id)
+    if not items:
+        return _game_says("remind_none", private=True)
+    out = _game_says("remind_list", private=True)
+    lines = [f"{i}. {reminders._clock(datetime.fromisoformat(r['at']))} — {r['text']} ({r['name']} 님, <#{r['thread'] or r['channel']}>)"
+             for i, r in enumerate(items, 1)]
+    out.info = "\n".join(["**전체 리마인드** (나만 보여요, 건 사람이나 대장 갑옷씨가 `/전체리마인드취소 [번호]`로 지워요)"] + lines)
+    return out
+
+
+def _remind_all_cancel(actor, guild_id, args, **_) -> Outcome:
+    if not memory.usable():
+        return _game_says("remind_locked", private=True)
+    number = int(args["번호"])
+    result = reminders.cancel_all(guild_id, number, actor.id, captain=actor.level >= members.CAPTAIN)
+    if result == "ok":
+        return _game_says("remind_cancelled", private=True, n=number)
+    return _game_says("remind_not_yours" if result == "not_yours" else "remind_bad_number", private=True)
 
 
 def _remind_cancel(actor, guild_id, args, **_) -> Outcome:
@@ -875,6 +927,9 @@ RUN = {
     "리마인드": _remind_add,
     "리마인드목록": _remind_list,
     "리마인드취소": _remind_cancel,
+    "전체리마인드": _remind_all_add,
+    "전체리마인드목록": _remind_all_list,
+    "전체리마인드취소": _remind_all_cancel,
     "기억 보기": _memory_show,
     "기억 지우기": _memory_forget,
     "점심 추천": _recommend(meals.LUNCH),

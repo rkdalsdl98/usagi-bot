@@ -120,3 +120,53 @@ def test_fire_all_sends_due_reminders_through_hachiware(delivery):
     assert reminders.fire_all("g", "own", NOW) == 1
     assert [text for _, text, _ in hooked if "회의" in text] and len(hooked) == 1
     assert [r["text"] for r in reminders.mine("g", "a")] == ["나중"]
+
+
+def add_all(by, text, when, channel="c-lunch", thread=None):
+    return reminders.add_all("g", by, "민지", channel, thread, text, when, NOW)
+
+
+def test_group_reminders_are_shared_and_kept_apart_from_personal(aws):
+    add_all("a", "회의실 이동", at(2026, 10, 26, 17, 0))
+    add_all("b", "점심 투표", at(2026, 10, 26, 16, 0))
+    add("a", "개인 일", at(2026, 10, 26, 16, 30))
+    assert [r["text"] for r in reminders.everyone("g")] == ["점심 투표", "회의실 이동"]  # 누가 걸었든 모두
+    assert [r["text"] for r in reminders.mine("g", "a")] == ["개인 일"]  # 개인 목록에는 안 섞임
+    assert reminders.cancel_all("g", 1, "a", captain=False) == "not_yours"  # 1번은 b 가 건 것
+    assert reminders.cancel_all("g", 1, "own", captain=True) == "ok"  # 대장은 지울 수 있음
+    assert reminders.cancel_all("g", 1, "a", captain=False) == "ok" and reminders.everyone("g") == []
+    assert reminders.cancel_all("g", 1, "a", captain=False) == "bad_number"
+
+
+def test_group_limit_is_per_server(aws):
+    for i in range(reminders.LIMIT):
+        add_all("a" if i % 2 else "b", f"알림 {i}", at(2026, 10, 27, 9, 0))
+    with pytest.raises(reminders.RemindError, match="too_many"):
+        add_all("c", "하나 더", at(2026, 10, 27, 9, 0))
+
+
+def test_leaving_keeps_group_reminders(aws):
+    add_all("a", "회의실 이동", at(2026, 10, 26, 17, 0))
+    add("a", "개인 일", at(2026, 10, 26, 16, 30))
+    assert reminders.forget("g", "a") == 1  # 개인 알림만 (전체 알림은 모두의 것이라 남김)
+    assert [r["text"] for r in reminders.everyone("g")] == ["회의실 이동"]
+
+
+def test_deliver_group_reminder_calls_everyone_in_that_channel(delivery, monkeypatch):
+    hooked, posted = delivery
+    calls = []
+    monkeypatch.setattr(reminders.hachiware, "hooks", lambda: {"555": HOOK, "c-lunch": "https://hook/lunch"})
+    monkeypatch.setattr(reminders.discord, "execute_webhook",
+                        lambda url, text, users=None, everyone=False: calls.append((url, text, everyone)) or {})
+    item = add_all("w", "회의실 이동", at(2026, 10, 26, 15, 0))  # 건 사람이 행인이 됐어도 전체 알림은 감
+    assert reminders.deliver("g", "own", item, late=True) is True
+    [(url, text, everyone)] = calls
+    assert url == "https://hook/lunch" and everyone is True and text.startswith("@everyone ")
+    assert "회의실 이동" in text and "늦었지만" in text
+    thread_item = add_all("a", "스레드 알림", at(2026, 10, 26, 15, 0), channel="555", thread="t9")
+    reminders.deliver("g", "own", thread_item, late=False)
+    assert calls[-1][0] == f"{HOOK}?thread_id=t9"
+    monkeypatch.setattr(reminders.hachiware, "hooks", lambda: {})  # 웹훅이 없으면 봇 계정으로
+    reminders.deliver("g", "own", item, late=False)
+    cid, payload = posted[-1]
+    assert cid == "c-lunch" and payload["allowed_mentions"]["parse"] == ["everyone"] and "> **하치와레**" in payload["content"]

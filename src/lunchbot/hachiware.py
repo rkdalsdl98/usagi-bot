@@ -358,6 +358,8 @@ NOTICES = {
     "remind_cancelled": [[("happy", "{n}번!"), ("sulky", "지웠어…")]],
     "remind_bad_number": [[("puzzled", "응?"), ("sulky", "그런 번호는 없어…")]],
     "remind_locked": [[("puzzled", "응?"), ("sulky", "알림 상자를 열 수 없어…")]],
+    "remind_all_saved": [[("excited", "{date}!"), ("happy", "다 같이 알려 줄게~")]],
+    "remind_not_yours": [[("puzzled", "응?"), ("sulky", "건 사람이나 대장만 지울 수 있어…")]],
     "usagi_thread": [[("excited", "{thread}!"), ("happy", "거기서 기다릴게~")],
                      [("happy", "둘이서 놀자~"), ("excited", "{thread}로 와!")]],
     "thread_failed": [[("puzzled", "어?"), ("sulky", "스레드를 못 만들었어…"), ("sulky", "'비공개 스레드 만들기' 권한 문제…")]],

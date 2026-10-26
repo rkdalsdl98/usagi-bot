@@ -63,3 +63,43 @@ def test_remind_list_and_cancel(team):
     assert "번호" in call("리마인드취소", "work", 번호=9)["data"]["content"]
     call("리마인드취소", "work", 번호=1)
     assert "없어" in call("리마인드목록", "work")["data"]["content"]
+
+
+def group(bot, actor, **opts):
+    event = slash("전체리마인드", actor)
+    event["data"]["options"] = [{"type": 3 if isinstance(v, str) else 4, "name": k, "value": v} for k, v in opts.items()]
+    n = len(bot.hooked)
+    body = json.loads(interaction.handler(signed_event(event), None)["body"])
+    return body, [text for _, text in bot.hooked[n:]]
+
+
+def test_group_remind_is_announced_by_hachiware(team):
+    from lunchbot import hachiware
+
+    hachiware.turn(False, "테스트")  # 번역이 꺼져 있어도 하치와레가 알림
+    body, said = group(team, "work", 내용="회의실 이동", 시간=17, 분=0)
+    assert "flags" not in body["data"]  # 모두가 봄
+    assert said and "10월 26일 오후 5시 0분" in said[0] and "다 같이" in said[0]
+    assert "회의실 이동" in body["data"]["content"]
+    [item] = reminders.everyone(GUILD)
+    assert (item["channel"], item["thread"], item["user"]) == ("c-usagi", None, "work")
+
+
+def test_group_remind_needs_worker_but_anyone_can_see_the_list(team):
+    _, said = team("전체리마인드", "x")
+    assert "직장인 갑옷씨" in said
+    group(team, "work", 내용="회의실 이동", 시간=17, 분=0)
+    body = call("전체리마인드목록", "x")
+    assert body["data"]["flags"] == 64 and "1. 10월 26일 오후 5시 0분 — 회의실 이동" in body["data"]["content"]
+
+
+def test_group_remind_cancel_by_maker_or_captain(team):
+    members.save(GUILD, {**members.load(GUILD), "walk": {"rank": members.WORKER}})  # 다른 직장인
+    group(team, "work", 내용="첫째", 시간=17, 분=0)
+    group(team, "work", 내용="둘째", 시간=18, 분=0)
+    body = call("전체리마인드취소", "walk", 번호=1)
+    assert body["data"]["flags"] == 64 and "건 사람" in body["data"]["content"] and len(reminders.everyone(GUILD)) == 2
+    assert call("전체리마인드취소", "work", 번호=1)["data"]["flags"] == 64
+    assert [r["text"] for r in reminders.everyone(GUILD)] == ["둘째"]
+    call("전체리마인드취소", "own", 번호=1)  # 서버 주인은 대장 갑옷씨
+    assert reminders.everyone(GUILD) == []
