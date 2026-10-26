@@ -55,6 +55,9 @@ ASKS = {
 }
 TO_USAGI = ("eat", "who", "like")  # 화제 없이 이렇게 물으면 우사기에게 묻는 것 ("밥 먹었어?")
 MEANING_MARKS = ("라는 뜻", "란 뜻", "뜻이야", "말하는 거", "의미")
+# 가르친 말을 기억할 때 빼는 부탁말 (물음말이 든 낱말도 뺌): "점메추 해줘?" → 점메추
+REQUEST_WORDS = frozenset({"해", "해줘", "해줄래", "해주라", "해봐", "줘", "줄래", "주라", "좀", "알려줘", "말해", "말해줘",
+                           "부탁해"})
 _QUOTED = re.compile(r"['\"‘“]([^'\"‘’“”]+)['\"’”]\s*(?:이)?라고")
 
 
@@ -91,6 +94,12 @@ def strip(token: str) -> str:
 
 def words(text: str) -> frozenset[str]:
     return frozenset(w for w in (strip(t) for t in chat._clean(text).split()) if w)
+
+
+def key_words(said: frozenset) -> frozenset:
+    """가르친 말을 알아볼 핵심 낱말 (물음말·부탁말을 뺌). 다 빠지면 그대로."""
+    kept = frozenset(w for w in said if w not in REQUEST_WORDS and not any(a in w for a in chat.ASK_WORDS))
+    return kept or said
 
 
 def similar(a: frozenset, b: frozenset) -> float:
@@ -137,8 +146,9 @@ def understand(text: str, ctx: Context | None, now: datetime, taught: list,
     if ctx and ctx.asked and not asking and len(said) <= REPLY_WORDS:
         return Turn("reply", topic=ctx.asked, words=said)
 
+    key = key_words(said)
     meaning = next((t for t in taught if t["kind"] == "meaning" and set(t["words"]) <= said), None)
-    answers = [(similar(said, frozenset(t["words"])), t) for t in taught if t["kind"] == "answer"]
+    answers = [(similar(key, key_words(frozenset(t["words"]))), t) for t in taught if t["kind"] == "answer"]
     best = max(answers, key=lambda a: a[0], default=(0.0, None))
     if meaning:
         return Turn("question", meaning["topic"], meaning["ask"], said)
