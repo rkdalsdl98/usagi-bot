@@ -47,13 +47,23 @@ def test_owner_of_thread(d):
 
 def test_first_chat_shows_guide_and_records_nothing(d):
     talk = say(d, "a", "라멘 좋아")
-    assert answers.MEMORY_GUIDE in talk.outs[0].hachiware
+    assert talk.notice is True and answers.MEMORY_GUIDE in talk.outs[0].hachiware
+    assert storage.list_keys("memories/g/") == []  # 안내가 닿기 전에는 아무것도 저장하지 않음
+    again = say(d, "a", "라멘 좋아")  # 안내가 닿았다는 말이 없으면 다시 안내
+    assert again.notice is True and storage.list_keys("memories/g/") == []
+
+
+def test_guide_counts_only_when_delivered(d):
+    say(d, "a", "안녕")
+    d.noticed("g", "a", NOW.date())  # 우사기 봇이 하치와레 안내를 보낸 뒤 부름
     mem = memory.load("g", "a")
-    assert mem["noticed"] == TODAY and mem["likes"] == [] and mem["last_seen"] is None and mem["moods"] == []
+    assert mem["noticed"] == TODAY and mem["likes"] == [] and mem["last_seen"] is None
+    assert say(d, "a", "안녕").notice is False
 
 
 def test_remembers_after_the_guide(d):
     say(d, "a", "안녕")
+    d.noticed("g", "a", NOW.date())
     say(d, "a", "라멘 좋아")
     mem = memory.load("g", "a")
     assert mem["likes"] == ["라멘"] and mem["last_seen"] == TODAY
@@ -160,3 +170,8 @@ def test_save_failure_still_answers(d, monkeypatch):
 
     monkeypatch.setattr(memory, "save", full)
     assert "농민백암순대" in words_of(say(d, "a", "오늘 점심 뭐야?"))
+
+
+def test_no_teaching_offer_on_the_guide_turn(d):
+    talk = say(d, "a", "점메추?")
+    assert talk.notice is True and "무슨 뜻인지" not in words_of(talk)

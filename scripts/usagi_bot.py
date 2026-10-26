@@ -34,6 +34,7 @@ import logging
 import os
 import random
 import sys
+import urllib.error
 
 import local_env
 
@@ -116,11 +117,12 @@ async def answer_in_thread(batch):
         talk = await asyncio.to_thread(
             talks.respond, guild_id=str(guild.id), thread_id=str(channel.id), author_id=str(target.author.id),
             owner_id=str(guild.owner_id) if guild.owner_id else None, text=text, now=config.now_kst(), translating=on)
-        for out in talk.outs:
+        for i, out in enumerate(talk.outs):
             await _say(channel, [chat.Step(out.sound, chat._typing(text, out.sound, random), quote=False)],
                        allowed_mentions=QUIET)
-            if out.hachiware:
-                await _hachiware_in_thread(channel.id, out.hachiware)
+            delivered = bool(out.hachiware) and await _hachiware_in_thread(channel.id, out.hachiware)
+            if talk.notice and i == 0 and delivered:  # 안내가 닿았을 때만 기록 시작
+                await asyncio.to_thread(talks.noticed, str(guild.id), str(target.author.id), config.now_kst().date())
         if talk.plain:
             steps = chat.plan(text, last=last_reply.get(channel.id))
             last_reply[channel.id] = steps[0].text
@@ -135,9 +137,26 @@ async def answer_in_thread(batch):
         log.warning("1:1 스레드 답을 못 보냄: %s", type(e).__name__)
 
 
-async def _hachiware_in_thread(thread_id, line: str) -> None:
+async def _hachiware_in_thread(thread_id, line: str) -> bool:
+    """하치와레가 1:1 스레드에 말합니다. 닿았으면 True.
+
+    웹훅이 지워졌으면(401·404) 그 뒤로는 번역이 꺼진 것으로 봅니다 (안내를 못 보는 사람을 모르게 기록하지 않게).
+    """
+    global hachiware_url
     await asyncio.sleep(random.uniform(*HACHIWARE_DELAY_S))
-    await asyncio.to_thread(discord_api.execute_webhook, f"{hachiware_url}?thread_id={thread_id}", line)
+    try:
+        await asyncio.to_thread(discord_api.execute_webhook, f"{hachiware_url}?thread_id={thread_id}", line)
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 404):
+            hachiware_url = ""
+            log.warning("하치와레 웹훅이 없어져 번역을 멈춥니다 (HTTP %s). 웹훅을 다시 만들고 봇을 다시 띄워 주세요", e.code)
+        else:
+            log.warning("1:1 스레드에 하치와레 말을 못 보냄: HTTP %s", e.code)
+        return False
+    except OSError as e:
+        log.warning("1:1 스레드에 하치와레 말을 못 보냄: %s", type(e).__name__)
+        return False
+    return True
 
 
 async def translate(channel_id, text: str, usagi: str, name: str):

@@ -7,6 +7,7 @@ discord.py 가 있어야 돌아갑니다:
 import asyncio
 import logging
 import sys
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -133,3 +134,21 @@ def test_thread_failure_logs_only_the_kind(world, caplog, monkeypatch):
     [record] = usagi_logs(caplog)
     assert record.levelno == logging.WARNING and "ValueError" in record.getMessage()
     assert SECRET not in record.getMessage() and "민지" not in record.getMessage()
+
+
+def test_guide_is_marked_seen_only_after_it_arrives(world, monkeypatch):
+    from lunchbot import memory
+
+    thread = Channel("ta", parent_id="555")
+    run(Message("안녕", thread, Author("a", "민지")))
+    assert memory.load("g", "a")["noticed"]  # 안내가 하치와레로 닿음
+
+    def gone(url, text):
+        raise urllib.error.HTTPError(url, 404, "Unknown Webhook", {}, None)
+
+    storage.put_json(storage.threads_key("g"), {"usagi": {"a": "ta", "b": "tb"}})
+    storage.put_json(storage.members_key("g"), {"members": {"a": {"rank": 2}, "b": {"rank": 2}}})
+    monkeypatch.setattr(bot.discord_api, "execute_webhook", gone)  # 하치와레 웹훅이 지워짐
+    run(Message("안녕", Channel("tb", parent_id="555"), Author("b", "현우")))
+    assert not memory.load("g", "b")["noticed"]  # 안내가 안 닿았으니 기록 시작 안 함
+    assert bot.hachiware_url == ""  # 그 뒤로는 번역이 꺼진 것으로 봄 (모르게 기록하지 않게)

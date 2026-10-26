@@ -26,6 +26,7 @@ class Talk:
     outs: list  # 먼저 보낼 것들 (안내, 물음의 답)
     plain: bool  # True 면 평범한 채팅: 우사기 봇이 지금 방식(chat.plan + hachiware.translate)으로 답함
     remark: str | None = None  # plain 일 때 하치와레 번역 뒤에 붙일 기억 한마디
+    notice: bool = False  # outs[0] 이 처음 안내. 우사기 봇이 하치와레로 보낸 뒤 Dialog.noticed 를 불러야 기록 시작
 
 
 def owner_of(guild_id: str, thread_id: str) -> str | None:
@@ -63,9 +64,9 @@ class Dialog:
             line = hachiware.relay(reply.script.text, rng)
             return Out(reply.script.sound, f"{line} {reply.own}" if reply.own else line)
 
-        if remember and not mem["noticed"]:
+        if remember and not mem["noticed"]:  # 안내가 닿기 전에는 아무것도 기록하지 않음 (noticed 도 닿은 뒤에)
             outs.append(out(answers.guide(rng)))
-            mem["noticed"], first = now.date().isoformat(), True
+            first = True
 
         turn = talk.understand(text, ctx, now, mem["taught"] if remember else [], answers.supported)
         if turn.kind == "teach" and not remember:  # 가르치기는 기억을 쓰는 사람만
@@ -82,7 +83,7 @@ class Dialog:
         elif turn.kind == "taught":
             reply = answers.taught_answer(turn.answer, rng)
         elif turn.kind == "unknown":
-            reply = answers.unknown(remember, rng)
+            reply = answers.unknown(remember and not first, rng)  # 안내하는 턴에는 배우지 않음
         elif turn.kind == "reply":
             reply = answers.reply_to(turn, rng)
         else:
@@ -90,12 +91,20 @@ class Dialog:
         if reply:
             outs.append(out(reply))
 
-        if remember:
-            if not first:
-                memory.observe(mem, text, chat.read(text), now.date())
+        if remember and not first:
+            memory.observe(mem, text, chat.read(text), now.date())
             _save(guild_id, author_id, mem)
-        self._contexts[where] = _next(ctx, turn, reply, remember, now)
-        return talked or Talk(outs, plain=False)
+        self._contexts[where] = _next(ctx, turn, reply, remember and not first, now)
+        result = talked or Talk(outs, plain=False)
+        result.notice = first
+        return result
+
+    def noticed(self, guild_id: str, user_id: str, day) -> None:
+        """처음 안내가 그 사람에게 닿았음 (그다음 채팅부터 기억)."""
+        mem = memory.load(str(guild_id), str(user_id))
+        if not mem["noticed"]:
+            mem["noticed"] = day.isoformat()
+            _save(str(guild_id), str(user_id), mem)
 
 
 def _save(guild_id: str, user_id: str, mem: dict) -> None:
