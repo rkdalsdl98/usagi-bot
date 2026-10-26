@@ -260,6 +260,11 @@ def add_thread_member(bot_token: str, thread_id: str, user_id: str) -> None:
     _api_send(bot_token, "PUT", f"/channels/{thread_id}/thread-members/{user_id}")
 
 
+def delete_channel(bot_token: str, channel_id: str, reason: str) -> None:
+    """채널(스레드)을 지웁니다 (서버를 나간 사람의 1:1 스레드). 봇에 '스레드 관리' 권한이 있어야 합니다 (없으면 HTTP 403)."""
+    _api_send(bot_token, "DELETE", f"/channels/{channel_id}", reason=reason)
+
+
 def remove_thread_member(bot_token: str, thread_id: str, user_id: str) -> None:
     """스레드에서 내보냅니다 (봇이 만든 비공개 스레드라 봇이 할 수 있음). 이미 없으면 HTTP 404."""
     _api_send(bot_token, "DELETE", f"/channels/{thread_id}/thread-members/{user_id}")

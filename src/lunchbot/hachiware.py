@@ -434,6 +434,15 @@ def turn(on: bool, by: str, user_id: str | None = None) -> bool:
 _hooks = None
 
 
+def forget(user_id: str) -> bool:
+    """그 사람의 개인 번역 설정을 지웁니다 (서버를 나간 사람). 없었으면 False."""
+    people = storage.get_json(storage.HACHIWARE_PEOPLE_KEY) or {}
+    if people.pop(str(user_id), None) is None:
+        return False
+    storage.put_json(storage.HACHIWARE_PEOPLE_KEY, people)
+    return True
+
+
 def hooks() -> dict:
     """{채널 ID: 하치와레 웹훅 주소}. 처음 한 번만 읽습니다 (웹훅을 바꾸면 서버를 다시 띄움)."""
     global _hooks

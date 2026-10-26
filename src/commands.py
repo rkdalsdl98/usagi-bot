@@ -32,7 +32,8 @@ import random
 import urllib.error
 from dataclasses import dataclass, field
 
-from lunchbot import birthdays, config, discord, game, hachiware, inbox, meals, members, memory, messages, roles, storage
+from lunchbot import (birthdays, config, departed, discord, game, hachiware, inbox, meals, members, memory, messages, roles,
+                     storage)
 import recommend
 
 log = logging.getLogger()
@@ -329,6 +330,7 @@ def _kick(actor, target, roster, guild_id, **_) -> Outcome:
         return _said("kick_gone" if e.code == 404 else "kick_failed", target=_mention(target))
     if roster.pop(target.id, None):
         members.save(guild_id, roster)
+    departed.forget_person(guild_id, target.id)  # 사람별 기록과 1:1 스레드도 바로 지움 (처리 줄 안이라 겹치지 않음)
     return _said("kicked", target=_mention(target))  # 우사기가 '우라!'
 
 
