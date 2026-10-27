@@ -7,6 +7,8 @@ import random
 import re
 import unicodedata
 
+import pytest
+
 from lunchbot import chat
 
 USAGI = "1563160909075972129"
@@ -141,3 +143,18 @@ def test_without_message_content_still_replies():
     # 채팅 내용을 못 읽으면 빈 글자로 들어온다
     lines = replies("")
     assert all(words(l) for l in lines) and len(set(lines)) >= 10
+
+
+@pytest.mark.parametrize("text, kind", [
+    ("내일 출장이라 걱정돼", "worry"), ("발표 때문에 불안해", "worry"), ("면접이라 긴장돼", "worry"), ("떨려 죽겠어", "worry"),
+    ("드디어 끝이다", "done"), ("오늘 업무 마무리 중이야", "done"), ("보고서 다 했다", "done"), ("합격했어!", "done"),
+    ("휴 다행이다", "done"), ("요즘 너무 바빠", "sad"), ("스트레스 받아", "sad"), ("너무 아쉽다", "sad"),
+    ("끝났는데 너무 피곤해", "sad"), ("드디어 퇴근", "bye")])
+def test_reads_everyday_feelings(text, kind):
+    assert chat.read(text).kind == kind
+
+
+def test_worry_gets_soft_sounds_and_done_gets_excited():
+    soft = ("후웅", "흐응")
+    assert share(replies("내일 출장이라 걱정돼"), lambda l: words(l)[0] in soft) >= 0.8
+    assert share(replies("드디어 끝이다"), lambda l: words(l)[0] in ("야하", "와앗")) >= 0.8

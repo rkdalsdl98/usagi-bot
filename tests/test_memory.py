@@ -133,3 +133,10 @@ def test_known_words_are_kept_newest(aws):
     mem["known"] = [f"낱말{i}" for i in range(305)]
     memory.save("g", "a", mem)
     assert memory.load("g", "a")["known"] == mem["known"][-300:]
+
+
+def test_worry_and_done_are_remembered_as_moods():
+    mem = memory.new()
+    seen(mem, "내일 출장이라 걱정돼")
+    seen(mem, "드디어 끝이다")
+    assert [k for _, k in mem["moods"]] == ["worry", "done"]

@@ -174,3 +174,11 @@ def test_asking_about_a_word_and_knowing_it():
     assert answers.knows("아샷추", "아이스티에 샷 추가") == "아샷추면 아이스티에 샷 추가지?"
     assert answers.knows("점심빵", "빵") == "점심빵이면 빵지?"
     assert "모르는 낱말" in answers.MEMORY_GUIDE
+
+
+def test_recall_asks_after_a_worry():
+    today = NOW.date()
+    mem = memory.new()
+    mem["last_seen"] = (today - timedelta(days=1)).isoformat()
+    mem["moods"] = [[(today - timedelta(days=1)).isoformat(), "worry"]]
+    assert answers.recall(mem, chat.read("안녕"), today) == "오늘은 좀 괜찮아?"

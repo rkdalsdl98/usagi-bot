@@ -275,6 +275,6 @@ def recall(mem: dict, reading: chat.Reading, today: date) -> str | None:
     if recent:
         day, food = recent[-1]
         return f"{_when(_days_ago(day, today))} {food} 먹었어?"
-    if any(k in ("sad", "angry") and _days_ago(d, today) <= RECALL_DAYS for d, k in mem["moods"]):
+    if any(k in ("sad", "worry", "angry") and _days_ago(d, today) <= RECALL_DAYS for d, k in mem["moods"]):
         return "오늘은 좀 괜찮아?"
     return None
