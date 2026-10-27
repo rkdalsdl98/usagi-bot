@@ -855,7 +855,9 @@ _TOPIC_NAMES = {"lunch": "오늘 점심", "dinner": "오늘 저녁", "last": "�
                 "game": "게임 점수", "rank": "내 등급", "time": "지금 시각", "off": "퇴근까지", "usagi": "우사기",
                 "hachiware": "하치와레", "me": "나", "talk": "마지막 대화", "bored": "심심할 때",
                 "tired": "힘들 때", "food": "뭐 먹을지", "place": "그 식당"}
-_KIND_NAMES = {"sad": "슬픔", "worry": "걱정", "done": "해냄", "angry": "화남", "laugh": "웃음", "praise": "칭찬", "surprise": "놀람", "greet": "인사",
+_KIND_NAMES = {"sad": "슬픔", "worry": "걱정", "done": "해냄", "relief": "안도", "wait": "기다림", "sorry": "사과",
+               "cheer": "응원", "congrats": "축하", "joy": "기쁨", "bored": "심심함", "miss": "그리움", "hot": "더위",
+               "cold": "추위", "rain": "비", "angry": "화남", "laugh": "웃음", "praise": "칭찬", "surprise": "놀람", "greet": "인사",
                "bye": "작별", "food": "음식", "agree": "맞장구", "call": "부르기"}
 
 

@@ -148,7 +148,7 @@ def test_without_message_content_still_replies():
 @pytest.mark.parametrize("text, kind", [
     ("내일 출장이라 걱정돼", "worry"), ("발표 때문에 불안해", "worry"), ("면접이라 긴장돼", "worry"), ("떨려 죽겠어", "worry"),
     ("드디어 끝이다", "done"), ("오늘 업무 마무리 중이야", "done"), ("보고서 다 했다", "done"), ("합격했어!", "done"),
-    ("휴 다행이다", "done"), ("요즘 너무 바빠", "sad"), ("스트레스 받아", "sad"), ("너무 아쉽다", "sad"),
+    ("휴 다행이다", "relief"), ("요즘 너무 바빠", "sad"), ("스트레스 받아", "sad"), ("너무 아쉽다", "sad"),
     ("끝났는데 너무 피곤해", "sad"), ("드디어 퇴근", "bye")])
 def test_reads_everyday_feelings(text, kind):
     assert chat.read(text).kind == kind
@@ -158,3 +158,32 @@ def test_worry_gets_soft_sounds_and_done_gets_excited():
     soft = ("후웅", "흐응")
     assert share(replies("내일 출장이라 걱정돼"), lambda l: words(l)[0] in soft) >= 0.8
     assert share(replies("드디어 끝이다"), lambda l: words(l)[0] in ("야하", "와앗")) >= 0.8
+
+
+@pytest.mark.parametrize("text, kind", [
+    ("휴 다행이다", "relief"), ("살았다", "relief"), ("이제 안심이야", "relief"), ("한숨 돌렸어", "relief"),
+    ("드디어 왔다 기다렸어", "wait"), ("이 순간을 기다렸다", "wait"), ("주말만 기다리는 중", "wait"),
+    ("내일 여행 너무 기대돼", "wait"), ("설렌다", "wait"), ("두근두근", "wait"),
+    ("미안해", "sorry"), ("죄송합니다", "sorry"), ("내 잘못이야", "sorry"),
+    ("화이팅!", "cheer"), ("우리 할 수 있어", "cheer"), ("힘내자", "cheer"), ("가보자고", "cheer"),
+    ("축하해!", "congrats"), ("생일 축하해", "congrats"), ("승진 축하드려요", "congrats"),
+    ("너무 기뻐", "joy"), ("행복해", "joy"), ("신난다", "joy"), ("뿌듯해", "joy"), ("오 좋네", "joy"),
+    ("심심해", "bored"), ("너무 지루하다", "bored"), ("노잼이야", "bored"),
+    ("보고 싶다", "miss"), ("그리워", "miss"),
+    ("더워 죽겠다", "hot"), ("너무 덥다", "hot"), ("너무 추워", "cold"), ("얼어 죽겠다", "cold"),
+    ("비 온다", "rain"), ("우산 없는데 비 와", "rain"),
+    ("드디어 끝이다", "done"), ("끝났는데 너무 피곤해", "sad"), ("내일 출장이라 걱정돼", "worry")])
+def test_reads_more_everyday_feelings(text, kind):
+    assert chat.read(text).kind == kind
+
+
+def test_new_feelings_get_fitting_sounds():
+    soft, cheerful = ("후웅", "흐응", "하아"), ("야하", "와앗", "우라", "이얏", "야앗")
+    assert share(replies("미안해"), lambda l: words(l)[0] in soft) >= 0.8  # 사과: 부드럽게 받아 줌
+    assert share(replies("화이팅!"), lambda l: words(l)[0] in cheerful) >= 0.8
+    assert share(replies("드디어 왔다 기다렸어"), lambda l: words(l)[0] in cheerful) >= 0.8
+
+
+def test_words_used_for_one_feeling_are_not_read_again():
+    assert chat.read("우산 없는데 비 와") == chat.Reading("rain")  # '비 와' 의 와 는 감탄 '와!' 가 아님
+    assert chat.read("야근인데 배고파 ㅠ") == chat.Reading("sad", then="food")  # 다른 낱말은 그대로 섞어 읽음

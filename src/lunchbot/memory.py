@@ -14,7 +14,8 @@ from . import chat, storage, talk, vault
 
 log = logging.getLogger(__name__)
 
-MOOD_KINDS = ("sad", "worry", "angry", "laugh", "praise", "surprise", "done")
+MOOD_KINDS = ("sad", "worry", "angry", "laugh", "praise", "surprise", "done", "relief", "wait", "sorry", "joy", "bored",
+              "miss")
 KINDS = frozenset(kind for kind, _ in chat.KINDS)
 KEY_ID_KEY = "memories/key-id.json"  # 기억 파일들을 잠근 마스터 키의 지문 (키 자체는 아님)
 LIMITS = {"moods": 10, "likes": 20, "dislikes": 20, "foods": 5, "taught": 50, "known": 300}  # 최근 것만 (오래된 것은 밀려남)
