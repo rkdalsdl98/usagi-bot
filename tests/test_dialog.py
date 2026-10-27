@@ -223,3 +223,11 @@ def test_glossed_word_in_chat_shows_it_knows(d):
                          now=NOW, translating=True, rng=random.Random(seed)).remark for seed in range(20)]
     assert any(r and "아샷추면 아이스티에 샷 추가지?" in r for r in remarks)
     assert not all(remarks)  # 늘 그러지는 않음
+
+
+def test_understood_chat_is_answered_first_and_the_word_asked_lightly(d):
+    noticed("a")
+    talk = say(d, "a", "아샷추 먹고 싶어")  # 음식 이야기인 건 알아들음
+    assert talk.plain is True and talk.remark == "근데 아샷추는 뭐야? 알려 주면 기억할게!"
+    assert "알았어" in words_of(say(d, "a", "아이스티에 샷 추가라는 뜻이야"))
+    assert any(t["kind"] == "word" and t["words"] == ["아샷추"] for t in memory.load("g", "a")["taught"])

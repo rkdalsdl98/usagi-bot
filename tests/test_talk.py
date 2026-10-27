@@ -160,3 +160,23 @@ def test_gloss_question_and_teach_turn():
     assert (turn.kind, turn.answer) == ("gloss", "아이스티에 샷 추가") and turn.words == {"아샷추"}
     turn = read("아이스티에 샷 추가라는 뜻이야", ctx(unknown=frozenset({"아샷추"})))
     assert turn.kind == "teach" and turn.teach == {"kind": "word", "means": "아이스티에 샷 추가"}
+
+
+EVERYDAY = ["이제 끝", "끝이야", "오늘 업무 마무리", "마무리했어", "드디어 금요일이다", "회의 끝나고 보자", "내일 출장이야",
+            "요즘 너무 바빠", "그래도 다행이다", "보고서 정리 중이야", "커피 한잔 할래", "스트레스 받아", "택배 왔어",
+            "회식 있대", "연차 쓸까", "월급날이다", "고마워 덕분이야", "오늘은 일찍 자야지", "점심 먹으러 가자", "걱정 마",
+            "주말에 뭐 하지", "오랜만에 산책했어", "비가 와서 우울해", "감기 걸렸나 봐", "내일 발표 준비해야 돼",
+            "팀장님이 칭찬해 주셨어", "프로젝트 마감이라 정신없어", "집에 가고 싶다", "강아지 산책시켜야 해", "운동 좀 해야겠다",
+            "오늘 진짜 대박이었어", "그냥 그렇지 뭐", "아무튼 수고했어", "일단 확인해 볼게", "결국 성공했다",
+            "아까 말한 거 있잖아", "조금 피곤하네", "다음 주에 휴가야", "메일 확인했어?", "이번 달 너무 길다"]
+
+
+@pytest.mark.parametrize("text", EVERYDAY)
+def test_everyday_words_are_not_new(text):
+    assert talk.new_word(text, set()) is None
+
+
+@pytest.mark.parametrize("text, word", [("아샷추 먹고 싶어", "아샷추"), ("핑프 인정", "핑프"), ("갓생 살자", "갓생"),
+                                        ("점메추 해줘", "점메추"), ("이번 주말엔 꾸안꾸로", "꾸안꾸")])
+def test_slang_is_still_new(text, word):
+    assert talk.new_word(text, set()) == word

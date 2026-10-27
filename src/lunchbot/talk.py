@@ -12,10 +12,12 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable
 
-from . import chat
+from . import chat, korean
 
 # 낱말 끝의 조사 (긴 것부터 봄). 떼고 남는 글자가 2자 이상일 때만 뗌 (나는 → 나는, 점심은 → 점심)
-PARTICLES = ("에서", "이야", "은", "는", "이", "가", "을", "를", "에", "도", "야", "요")
+PARTICLES = ("에서는", "에서도", "으로는", "이라고", "에게는", "한테는", "에서", "에게", "한테", "까지", "부터", "처럼", "보다",
+             "이랑", "이야", "으로", "에는", "에도", "하고", "라고", "은", "는", "이", "가", "을", "를", "에", "도", "야", "요",
+             "로", "랑", "만", "의", "엔")
 
 CONTEXT_S = 600  # 바로 앞 문맥을 이어받는 시간 (10분)
 TEACH_S = 300  # 모르는 물음 뒤 설명을 기다리는 시간 (5분)
@@ -81,7 +83,9 @@ BASE_WORDS = frozenset("""
 # 움직임·상태를 말하는 끝 (이 끝으로 끝나는 말은 이름이 아니라고 봄: 마시고, 싶다, 야근시킴)
 PREDICATE_ENDS = ("다", "요", "고", "어", "아", "지", "네", "서", "면", "게", "자", "까", "래", "냐", "니", "음", "임",
                   "함", "됨", "김", "킴", "짐", "심", "기", "겠", "죠", "든", "던", "며", "러", "라", "해", "줘", "봐",
-                  "데", "께", "걸", "군", "나", "랑", "며", "니까", "는데", "도록", "려고")
+                  "데", "께", "걸", "군", "나", "랑", "며", "니까", "는데", "도록", "려고", "대", "워", "빠", "파", "써",
+                  "려", "쳐", "져", "돼", "셔", "왔", "갔", "했", "봤", "줬", "났", "됐", "렸", "였", "겼", "와", "봐요", "야", "한",
+                  "켜", "잖아")
 REQUEST_WORDS = frozenset({"해", "해줘", "해줄래", "해주라", "해봐", "줘", "줄래", "주라", "좀", "알려줘", "말해", "말해줘",
                            "부탁해"})
 _QUOTED = re.compile(r"['\"‘“]([^'\"‘’“”]+)['\"’”]\s*(?:이)?라고")
@@ -146,7 +150,9 @@ def _plain_noun(word: str) -> bool:
     """우사기가 모를 수 있는, 이름처럼 쓰인 낱말인지 (한글 두 글자 이상, 흔한 말·채팅 낱말·음식·움직임 말이 아님)."""
     if len(word) < 2 or not all("가" <= c <= "힣" for c in word):
         return False
-    if word in BASE_WORDS or word in REQUEST_WORDS or word in _WHOLE or word.endswith(PREDICATE_ENDS):
+    if korean.common(word) or word in BASE_WORDS or word in REQUEST_WORDS or word in _WHOLE:
+        return False  # 기본 낱말 (조사·'이다'를 떼어 보고: "끝이야", "출장이야")
+    if word.endswith(PREDICATE_ENDS):
         return False
     return not any(k in word for k in _INSIDE) and not any(word.startswith(f) for f in FOOD_WORDS)
 
@@ -154,8 +160,10 @@ def _plain_noun(word: str) -> bool:
 def new_word(text: str, known) -> str | None:
     """채팅에서 처음 보는 낱말 하나 (앞에 나온 것부터). known 은 그 사람이 이미 알려 줬거나 넘긴 말."""
     for token in chat._clean(text).split():
-        word = strip(token)
-        if word not in known and _plain_noun(word):
+        raw, word = chat._word(token), strip(token)
+        if word in known or raw in known:
+            continue
+        if _plain_noun(raw) and _plain_noun(word):  # 조사를 뗀 꼴과 뗀 앞 꼴 모두 모르는 말일 때만
             return word
     return None
 

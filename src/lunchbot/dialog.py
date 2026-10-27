@@ -85,8 +85,12 @@ class Dialog:
             last = self._asked_word.get(where)
             if turn.kind == "unknown" or not last or (now - last).total_seconds() >= WORD_ASK_S:
                 word = talk.new_word(text, known)
+        aside = None  # 알아들은 채팅이면 답부터 하고 낱말은 하치와레가 덧붙여 물음 (대화가 끊기지 않게)
         if word and turn.kind == "chat":
-            turn = talk.Turn("unknown", words=frozenset({word}))
+            if chat.read(text).kind in ("plain", "unknown"):  # 무슨 말인지 모르면 그 낱말부터 물음
+                turn = talk.Turn("unknown", words=frozenset({word}))
+            else:
+                aside, self._asked_word[where] = answers.ask_word(word), now
         reply, talked = None, None
         if turn.kind == "teach":
             lesson = {k: v for k, v in turn.teach.items() if k != "kind"}
@@ -107,7 +111,7 @@ class Dialog:
         elif turn.kind == "reply":
             reply = answers.reply_to(turn, rng)
         else:
-            talked = Talk(outs, plain=True, remark=_remark(mem, text, now, rng) if remember else None)
+            talked = Talk(outs, plain=True, remark=aside or (_remark(mem, text, now, rng) if remember else None))
         if reply:
             outs.append(out(reply))
 
@@ -115,6 +119,8 @@ class Dialog:
             memory.observe(mem, text, chat.read(text), now.date())
             _save(guild_id, author_id, mem)
         self._contexts[where] = _next(ctx, turn, reply, learning, now, word)
+        if aside:  # 덧붙여 물은 낱말도 다음 채팅에서 설명을 기다림
+            self._contexts[where].unknown = frozenset({word})
         result = talked or Talk(outs, plain=False)
         result.notice = first
         return result

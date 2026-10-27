@@ -229,6 +229,11 @@ def _has_final(word: str) -> bool:
     return "가" <= last <= "힣" and (ord(last) - ord("가")) % 28 != 0
 
 
+def ask_word(word: str) -> str:
+    """알아들은 채팅에 하치와레가 덧붙여 가볍게 묻는 말 ("근데 아샷추는 뭐야? 알려 주면 기억할게!")."""
+    return f"근데 {word}{'은' if _has_final(word) else '는'} 뭐야? 알려 주면 기억할게!"
+
+
 def knows(word: str, means: str) -> str:
     """알려 준 낱말이 나왔을 때 하치와레의 한마디 ("아샷추면 아이스티에 샷 추가지?")."""
     return f"{word}{'이면' if _has_final(word) else '면'} {means}지?"
